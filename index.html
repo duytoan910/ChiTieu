@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sổ Tay Chi Tiêu Hàng Ngày - Kendo UI & Google Sheets</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+    <!-- Kendo UI CSS (Standard Web Controls) -->
+    <link rel="stylesheet" href="https://kendo.cdn.telerik.com/2023.2.718/styles/kendo.common.min.css" />
+    <link rel="stylesheet" href="https://kendo.cdn.telerik.com/2023.2.718/styles/kendo.default-v2.min.css" />
+
+    <!-- Application Global Styles (Tailwind v4) -->
+    <link rel="stylesheet" href="/src/index.css" />
+
+    <style>
+      body {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        background-color: #f8fafc;
+        color: #0f172a;
+      }
+      /* Custom tweaks for Kendo UI to blend with Tailwind theme */
+      .k-grid {
+        border-radius: 0.75rem;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+      }
+      .k-grid-header {
+        background-color: #f1f5f9;
+        border-bottom: 1px solid #cbd5e1;
+      }
+      .k-grid-header th.k-header {
+        font-weight: 700;
+        color: #334155;
+        padding: 12px 16px;
+      }
+      .k-grid td {
+        padding: 10px 16px;
+        border-color: #f1f5f9;
+      }
+      .k-alt {
+        background-color: #fafafa;
+      }
+      .k-grid-footer {
+        background-color: #ecfdf5;
+        border-top: 2px solid #10b981;
+      }
+      .k-numerictextbox, .k-datepicker, .k-autocomplete {
+        width: 100%;
+        border-radius: 0.5rem;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen pb-16">
+    <!-- Notification Container -->
+    <div id="notification"></div>
+
+    <!-- App Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-xl shadow-sm">
+            ₫
+          </div>
+          <div>
+            <h1 class="text-lg font-bold text-slate-900 leading-tight">Sổ Tay Chi Tiêu Hàng Ngày</h1>
+            <p class="text-xs text-slate-500">Kendo UI HTML/CSS • Tự động lấy ngày • Tích hợp Google Sheets</p>
+          </div>
+        </div>
+
+        <!-- Google User Account Status -->
+        <div id="auth-container">
+          <div class="flex items-center gap-2 text-xs text-slate-400">
+            <span class="inline-block w-2 h-2 rounded-full bg-slate-300 animate-ping"></span> Đang kiểm tra Google Auth...
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 space-y-6">
+      
+      <!-- Google Sheets Toolbar Card -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
+        <div class="flex flex-wrap items-center gap-3">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-emerald-600" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM7 7h10v2H7zm0 4h10v2H7zm0 4h7v2H7z"/>
+            </svg>
+            Google Sheet:
+          </span>
+          <div id="sheet-select-container">
+            <!-- Sheet selector rendered dynamically -->
+          </div>
+        </div>
+
+        <div id="sync-status-badge" class="px-3 py-1 text-xs font-semibold rounded-full border bg-slate-100 text-slate-700 border-slate-200 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-slate-400"></span> Chưa lưu vào Google Sheet
+        </div>
+      </div>
+
+      <!-- KPI Summary Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+          <div class="text-xs font-medium text-slate-500">Tổng tiền đã chi</div>
+          <div id="stat-total-amount" class="text-xl font-extrabold text-slate-900 mt-1">0 ₫</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">Tất cả khoản chi trong bảng</div>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+          <div class="text-xs font-medium text-slate-500">Chi tiêu hôm nay</div>
+          <div id="stat-today-amount" class="text-xl font-extrabold text-emerald-600 mt-1">0 ₫</div>
+          <div class="text-[11px] text-emerald-600 font-medium mt-0.5">Tự động lọc theo ngày hiện tại</div>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+          <div class="text-xs font-medium text-slate-500">Tổng số dòng chi tiêu</div>
+          <div id="stat-total-count" class="text-xl font-extrabold text-slate-800 mt-1">0 giao dịch</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">Thêm/xoá tuỳ ý trong bảng</div>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+          <div class="text-xs font-medium text-slate-500">Chi tiêu nhiều nhất</div>
+          <div id="stat-top-spender" class="text-sm font-bold text-indigo-700 mt-1.5 truncate">-</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">Người chi nhiều nhất</div>
+        </div>
+      </div>
+
+      <!-- Quick Entry Form Card -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+          <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+            <span class="w-2 h-5 bg-emerald-600 rounded-full"></span>
+            Nhập Chi Tiêu Hàng Ngày (Kendo UI Inputs)
+          </h2>
+          <span class="text-xs text-slate-500 italic">* Ngày tháng tự động lấy ngày hiện tại</span>
+        </div>
+
+        <form id="expense-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <!-- 1. Date Picker -->
+          <div class="space-y-1">
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">1. Ngày tháng</label>
+            <input id="input-date" style="width: 100%;" />
+          </div>
+
+          <!-- 2. Person Name -->
+          <div class="space-y-1">
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">2. Tên người chi tiêu</label>
+            <input id="input-spender" style="width: 100%;" placeholder="Nhập hoặc chọn tên..." />
+          </div>
+
+          <!-- 3. Expense Name -->
+          <div class="space-y-1">
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">3. Tên chi phí / Nội dung</label>
+            <input id="input-expense" style="width: 100%;" placeholder="Ví dụ: Ăn sáng, Cà phê, Xăng xe..." />
+          </div>
+
+          <!-- 4. Amount -->
+          <div class="space-y-1">
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">4. Số tiền (VNĐ)</label>
+            <input id="input-amount" style="width: 100%;" />
+          </div>
+        </form>
+
+        <!-- Amount Quick Presets & Submit Actions -->
+        <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-xs text-slate-500 font-medium">Cộng nhanh:</span>
+            <button type="button" class="btn-preset-amount px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md border border-slate-200 transition-colors" data-val="10000">+10k</button>
+            <button type="button" class="btn-preset-amount px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md border border-slate-200 transition-colors" data-val="50000">+50k</button>
+            <button type="button" class="btn-preset-amount px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md border border-slate-200 transition-colors" data-val="100000">+100k</button>
+            <button type="button" class="btn-preset-amount px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md border border-slate-200 transition-colors" data-val="200000">+200k</button>
+            <button type="button" class="btn-preset-amount px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md border border-slate-200 transition-colors" data-val="500000">+500k</button>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button type="button" id="btn-reset-form" class="px-3.5 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200">
+              Làm mới
+            </button>
+            <button type="button" id="btn-add-expense" class="px-6 py-2.5 text-sm font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-98 rounded-lg shadow-md transition-all flex items-center gap-2 cursor-pointer">
+              <svg class="w-4 h-4 text-white fill-current" viewBox="0 0 24 24">
+                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM7 7h10v2H7zm0 4h10v2H7zm0 4h7v2H7z"/>
+              </svg>
+              Gửi (Submit & Tự động lưu vào Google Sheet)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kendo Grid Container Card -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 class="text-base font-bold text-slate-800">Danh Sách Chi Tiêu (Kendo UI Grid)</h3>
+            <p class="text-xs text-slate-500">Chỉnh sửa trực tiếp từng ô, sắp xếp, lọc dữ liệu và xoá dòng thoải mái</p>
+          </div>
+        </div>
+
+        <!-- The Kendo Grid element -->
+        <div id="grid"></div>
+      </div>
+
+    </main>
+
+    <!-- jQuery & Kendo UI Scripts -->
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://kendo.cdn.telerik.com/2023.2.718/js/kendo.all.min.js"></script>
+    <script src="https://kendo.cdn.telerik.com/2023.2.718/js/cultures/kendo.culture.vi-VN.min.js"></script>
+
+    <!-- App JavaScript -->
+    <script src="/src/app.js"></script>
+  </body>
+</html>
