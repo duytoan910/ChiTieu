@@ -271,9 +271,21 @@ $(document).ready(function () {
     return flattened;
   }
 
+  const isStaticHost =
+    window.location.protocol === 'file:' ||
+    window.location.hostname.includes('github.io') ||
+    window.location.hostname.includes('netlify') ||
+    window.location.hostname.includes('vercel') ||
+    window.location.hostname.includes('pages.dev');
+
   // --- DATA FETCHING (SERVER API -> RESTDB -> LOCALSTORAGE FALLBACK) ---
   function loadExpenses() {
     $('#btn-reload-data i').addClass('fa-spin');
+
+    if (isStaticHost) {
+      fallbackToDirectRestDbOrLocal();
+      return;
+    }
 
     // 1. First try Express proxy API /api/expenses
     $.ajax({
@@ -790,6 +802,11 @@ $(document).ready(function () {
     const $btn = $('#btn-submit-expenses');
     $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> Đang lưu...');
 
+    if (isStaticHost) {
+      saveToDirectRestDbOrLocal(payloadSchema, totalAmountInVnd);
+      return;
+    }
+
     $.ajax({
       url: '/api/expenses',
       method: 'POST',
@@ -1285,6 +1302,32 @@ $(document).ready(function () {
       renderAll();
     };
 
+    const updateRestDbDirectly = () => {
+      $.ajax({
+        url: `${RESTDB_URL}/${targetDocId}`,
+        method: 'PUT',
+        headers: {
+          'x-apikey': RESTDB_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        data: JSON.stringify(updatedDoc),
+        timeout: 5000,
+        success: function () {
+          applyUpdateLocally();
+          showToast('Đã cập nhật chi tiêu trên RestDB!', 'success');
+        },
+        error: function () {
+          applyUpdateLocally();
+          showToast('Đã cập nhật chi tiêu trong bộ nhớ!', 'success');
+        },
+      });
+    };
+
+    if (isStaticHost) {
+      updateRestDbDirectly();
+      return;
+    }
+
     // Attempt Express PUT
     $.ajax({
       url: `/api/expenses/${targetDocId}`,
@@ -1297,25 +1340,7 @@ $(document).ready(function () {
         showToast('Đã cập nhật chi tiêu thành công!', 'success');
       },
       error: function () {
-        // Fallback direct RestDB or local
-        $.ajax({
-          url: `${RESTDB_URL}/${targetDocId}`,
-          method: 'PUT',
-          headers: {
-            'x-apikey': RESTDB_API_KEY,
-            'Content-Type': 'application/json',
-          },
-          data: JSON.stringify(updatedDoc),
-          timeout: 5000,
-          success: function () {
-            applyUpdateLocally();
-            showToast('Đã cập nhật chi tiêu trên RestDB!', 'success');
-          },
-          error: function () {
-            applyUpdateLocally();
-            showToast('Đã cập nhật chi tiêu trong bộ nhớ!', 'success');
-          },
-        });
+        updateRestDbDirectly();
       },
     });
   }
@@ -1358,6 +1383,32 @@ $(document).ready(function () {
         renderAll();
       };
 
+      const deleteOnRestDbDirectly = () => {
+        $.ajax({
+          url: `${RESTDB_URL}/${targetDocId}`,
+          method: 'PUT',
+          headers: {
+            'x-apikey': RESTDB_API_KEY,
+            'Content-Type': 'application/json',
+          },
+          data: JSON.stringify(updatedDoc),
+          timeout: 5000,
+          success: function () {
+            applyUpdateLocally();
+            showToast('Đã xoá khoản chi tiêu!', 'success');
+          },
+          error: function () {
+            applyUpdateLocally();
+            showToast('Đã xoá khoản chi tiêu khỏi bộ nhớ!', 'success');
+          },
+        });
+      };
+
+      if (isStaticHost) {
+        deleteOnRestDbDirectly();
+        return;
+      }
+
       $.ajax({
         url: `/api/expenses/${targetDocId}`,
         method: 'PUT',
@@ -1369,24 +1420,7 @@ $(document).ready(function () {
           showToast('Đã xoá khoản chi tiêu!', 'success');
         },
         error: function () {
-          $.ajax({
-            url: `${RESTDB_URL}/${targetDocId}`,
-            method: 'PUT',
-            headers: {
-              'x-apikey': RESTDB_API_KEY,
-              'Content-Type': 'application/json',
-            },
-            data: JSON.stringify(updatedDoc),
-            timeout: 5000,
-            success: function () {
-              applyUpdateLocally();
-              showToast('Đã xoá khoản chi tiêu!', 'success');
-            },
-            error: function () {
-              applyUpdateLocally();
-              showToast('Đã xoá khoản chi tiêu khỏi bộ nhớ!', 'success');
-            },
-          });
+          deleteOnRestDbDirectly();
         },
       });
     } else {
@@ -1398,6 +1432,30 @@ $(document).ready(function () {
         renderAll();
       };
 
+      const deleteDocOnRestDbDirectly = () => {
+        $.ajax({
+          url: `${RESTDB_URL}/${targetDocId}`,
+          method: 'DELETE',
+          headers: {
+            'x-apikey': RESTDB_API_KEY,
+          },
+          timeout: 5000,
+          success: function () {
+            applyDeleteLocally();
+            showToast('Đã xoá trên RestDB!', 'success');
+          },
+          error: function () {
+            applyDeleteLocally();
+            showToast('Đã xoá khỏi bộ nhớ máy!', 'success');
+          },
+        });
+      };
+
+      if (isStaticHost) {
+        deleteDocOnRestDbDirectly();
+        return;
+      }
+
       $.ajax({
         url: `/api/expenses/${targetDocId}`,
         method: 'DELETE',
@@ -1407,22 +1465,7 @@ $(document).ready(function () {
           showToast('Đã xoá khoản chi tiêu!', 'success');
         },
         error: function () {
-          $.ajax({
-            url: `${RESTDB_URL}/${targetDocId}`,
-            method: 'DELETE',
-            headers: {
-              'x-apikey': RESTDB_API_KEY,
-            },
-            timeout: 5000,
-            success: function () {
-              applyDeleteLocally();
-              showToast('Đã xoá trên RestDB!', 'success');
-            },
-            error: function () {
-              applyDeleteLocally();
-              showToast('Đã xoá khỏi bộ nhớ máy!', 'success');
-            },
-          });
+          deleteDocOnRestDbDirectly();
         },
       });
     }
