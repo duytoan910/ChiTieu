@@ -419,6 +419,29 @@
 
   </main>
 
+  <!-- Custom Confirmation Modal -->
+  <div id="confirm-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs hidden transition-opacity">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl border border-slate-100 transform transition-all scale-100 space-y-4">
+      <div class="flex items-start gap-3.5 text-rose-600">
+        <div class="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0 mt-0.5">
+          <i class="fa-solid fa-trash-can text-lg text-rose-600"></i>
+        </div>
+        <div class="space-y-1">
+          <h4 class="font-extrabold text-base text-slate-900">Xác nhận xoá</h4>
+          <p id="confirm-modal-message" class="text-xs text-slate-500 font-medium leading-relaxed">Bạn có chắc chắn muốn xoá khoản chi tiêu này không?</p>
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+        <button type="button" id="confirm-modal-cancel" class="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer">
+          Hủy bỏ
+        </button>
+        <button type="button" id="confirm-modal-ok" class="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors shadow-xs cursor-pointer">
+          Xoá ngay
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Application Logic -->
   <script src="/src/app.js"></script>
 </body>

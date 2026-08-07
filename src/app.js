@@ -25,6 +25,23 @@ $(document).ready(function () {
   let activeFocusRowId = null;
   let expandedDates = new Set();
   let initialExpansionDone = false;
+  let pendingConfirmCallback = null;
+
+  // Custom Confirmation Modal Helper
+  function showConfirmModal(message, onConfirm) {
+    if (message) {
+      $('#confirm-modal-message').text(message);
+    } else {
+      $('#confirm-modal-message').text('Bạn có chắc chắn muốn xoá khoản chi tiêu này không?');
+    }
+    pendingConfirmCallback = onConfirm;
+    $('#confirm-modal').removeClass('hidden').addClass('flex');
+  }
+
+  function hideConfirmModal() {
+    $('#confirm-modal').addClass('hidden').removeClass('flex');
+    pendingConfirmCallback = null;
+  }
 
   // --- INITIALIZATION ---
   initApp();
@@ -441,6 +458,27 @@ $(document).ready(function () {
 
   // --- EVENT BINDINGS ---
   function bindEvents() {
+    // Confirm Modal actions
+    $('#confirm-modal-cancel').on('click', function () {
+      hideConfirmModal();
+    });
+
+    $('#confirm-modal-ok').on('click', function () {
+      if (typeof pendingConfirmCallback === 'function') {
+        const cb = pendingConfirmCallback;
+        hideConfirmModal();
+        cb();
+      } else {
+        hideConfirmModal();
+      }
+    });
+
+    $('#confirm-modal').on('click', function (e) {
+      if (e.target === this) {
+        hideConfirmModal();
+      }
+    });
+
     // Reload button
     $('#btn-reload-data').on('click', function () {
       loadExpenses();
@@ -1283,14 +1321,21 @@ $(document).ready(function () {
   }
 
   function deleteExpenseItem(id) {
-    if (!window.confirm('Bạn có chắc chắn muốn xoá khoản chi tiêu này không?')) return;
-
     const targetItem = expensesList.find((i) => i._id === id);
     if (!targetItem) {
       showToast('Không tìm thấy khoản chi tiêu cần xoá!', 'error');
       return;
     }
 
+    const expText = targetItem.expense ? `"${targetItem.expense}"` : 'khoản chi tiêu này';
+    const confirmMessage = `Bạn có chắc chắn muốn xoá ${expText} không?`;
+
+    showConfirmModal(confirmMessage, function () {
+      executeDeleteExpenseItem(id, targetItem);
+    });
+  }
+
+  function executeDeleteExpenseItem(id, targetItem) {
     const targetDocId = targetItem.doc_id || id;
     const itemIndex = typeof targetItem.item_index === 'number' ? targetItem.item_index : 0;
     const parentDoc = rawDocs.find((d) => d._id === targetDocId);
