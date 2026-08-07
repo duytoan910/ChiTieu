@@ -1,4 +1,7 @@
 import './index.css';
+import $ from 'jquery';
+
+window.$ = window.jQuery = $;
 
 /**
  * Sổ Chi Tiêu Ngăn ❤️ & Tòn 🐷
