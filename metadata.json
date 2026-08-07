@@ -1,6 +1,6 @@
 {
-  "name": "Sổ Tay Chi Tiêu Kendo UI",
-  "description": "Ứng dụng quản lý chi tiêu hàng ngày sử dụng Kendo UI HTML/CSS và tích hợp Google Sheets",
+  "name": "Sổ Chi Tiêu Ngăn & Tòn",
+  "description": "Ứng dụng quản lý chi tiêu hàng ngày sử dụng HTML, jQuery, Tailwind CSS và RestDB.io",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

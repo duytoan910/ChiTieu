@@ -1,659 +1,1014 @@
 /**
- * Sổ Tay Chi Tiêu Hàng Ngày - Pure HTML/CSS & Kendo UI (jQuery version)
+ * Sổ Chi Tiêu Ngăn ❤️ & Tòn 🐷
+ * Tech Stack: Pure HTML5, jQuery 3.7, Tailwind CSS
+ * Compatible with AI Studio, RestDB.io, and GitHub Pages Deployment
  */
 
 $(document).ready(function () {
-  // Set Vietnamese culture for Kendo UI
-  if (kendo && kendo.culture) {
-    kendo.culture("vi-VN");
+  // --- RESTDB & STORAGE CONFIGURATION ---
+  const RESTDB_URL = 'https://dtoan-e791.restdb.io/rest/expenses';
+  const RESTDB_API_KEY = '6a74c1d37eee3e669ebc395c';
+  const LOCAL_STORAGE_KEY = 'so_chi_tieu_ngan_ton_data';
+
+  // App State
+  let rawDocs = [];
+  let expensesList = [];
+  let selectedSpender = 'Ngăn ❤️❤️❤️';
+  let selectedMonthFilter = 'CURRENT';
+  let searchQuery = '';
+  let sortField = 'created_at';
+  let sortAsc = false;
+  let currentPage = 1;
+  let pageSize = 15;
+  let editingRowId = null;
+  let activeFocusRowId = null;
+
+  // --- INITIALIZATION ---
+  initApp();
+
+  function initApp() {
+    // Set default date to today YYYY-MM-DD
+    $('#input-date').val(getTodayYYYYMMDD());
+
+    // Render initial empty row in form
+    addFormRow();
+
+    // Attach Event Listeners
+    bindEvents();
+
+    // Fetch Initial Expenses
+    loadExpenses();
   }
 
-  // Application State
-  let selectedSpreadsheetId = localStorage.getItem("selectedSpreadsheetId") || "";
-  let isGoogleAuth = false;
-  let unsavedChanges = false;
+  // --- TOAST NOTIFICATIONS ---
+  function showToast(text, type = 'info') {
+    const id = 'toast-' + Math.random().toString(36).substring(2, 9);
+    let bgClasses = 'bg-blue-50 text-blue-900 border-blue-200';
+    let icon = 'fa-info-circle text-blue-600';
 
-  // Initial Sample Data if starting fresh
-  const defaultInitialData = [
-    { id: generateId(), date: getTodayFormatted(), spender: "Tôi", expense: "Ăn sáng & Cà phê", amount: 45000 },
-    { id: generateId(), date: getTodayFormatted(), spender: "Tôi", expense: "Xăng xe máy", amount: 80000 },
-    { id: generateId(), date: getTodayFormatted(), spender: "Vợ", expense: "Đi chợ thực phẩm", amount: 250000 },
-  ];
-
-  // Load local backup if present, else default
-  const savedLocalItems = localStorage.getItem("kendo_expense_items");
-  let currentItems = savedLocalItems ? JSON.parse(savedLocalItems) : defaultInitialData;
-
-  // Initialize Notification Toast
-  const notification = $("#notification").kendoNotification({
-    position: { pinned: true, top: 20, right: 20 },
-    autoHideAfter: 3500,
-    stacking: "down",
-    templates: [
-      { type: "info", template: "<div class='flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-800 bg-blue-50 border border-blue-200 rounded-lg shadow-md'><span class='k-icon k-i-info'></span> #: message #</div>" },
-      { type: "success", template: "<div class='flex items-center gap-2 px-3 py-2 text-sm font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg shadow-md'><span class='k-icon k-i-check-circle'></span> #: message #</div>" },
-      { type: "error", template: "<div class='flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-800 bg-red-50 border border-red-200 rounded-lg shadow-md'><span class='k-icon k-i-exception'></span> #: message #</div>" }
-    ]
-  }).data("kendoNotification");
-
-  function showToast(msg, type = "info") {
-    if (notification) {
-      notification.show({ message: msg }, type);
-    } else {
-      console.log(`[${type.toUpperCase()}] ${msg}`);
-    }
-  }
-
-  // --- Kendo Controls Initialization ---
-
-  // 1. DatePicker (Default to TODAY)
-  const datePicker = $("#input-date").kendoDatePicker({
-    format: "dd/MM/yyyy",
-    value: new Date(),
-    culture: "vi-VN",
-  }).data("kendoDatePicker");
-
-  // 2. Amount NumericTextBox
-  const amountBox = $("#input-amount").kendoNumericTextBox({
-    format: "n0",
-    min: 0,
-    step: 10000,
-    decimals: 0,
-    placeholder: "0 ₫",
-    culture: "vi-VN"
-  }).data("kendoNumericTextBox");
-
-  // 3. Spender AutoComplete
-  $("#input-spender").kendoAutoComplete({
-    dataSource: ["Tôi", "Vợ/Chồng", "Mẹ", "Bố", "Thành viên A", "Công ty", "Gia đình"],
-    placeholder: "Ví dụ: Tôi, Vợ...",
-    filter: "contains"
-  });
-
-  // 4. Expense AutoComplete
-  $("#input-expense").kendoAutoComplete({
-    dataSource: [
-      "Ăn sáng", "Ăn trưa", "Ăn tối", "Cà phê", "Xăng xe", "Đi chợ / Siêu thị",
-      "Tiền điện", "Tiền nước", "Tiền Internet", "Mua sắm quần áo", "Khám bệnh / Thuốc",
-      "Giải trí / Xem phim", "Gửi xe", "Sửa chữa đồ đạc", "Tiền học phí"
-    ],
-    placeholder: "Ví dụ: Ăn sáng, Xăng xe...",
-    filter: "contains"
-  });
-
-  // --- Kendo Grid DataSource Setup ---
-  const gridDataSource = new kendo.data.DataSource({
-    data: currentItems,
-    schema: {
-      model: {
-        id: "id",
-        fields: {
-          id: { editable: false, nullable: true },
-          date: { type: "string", validation: { required: true } },
-          spender: { type: "string", validation: { required: true } },
-          expense: { type: "string", validation: { required: true } },
-          amount: { type: "number", validation: { required: true, min: 0 } }
-        }
-      }
-    },
-    aggregate: [
-      { field: "amount", aggregate: "sum" },
-      { field: "spender", aggregate: "count" }
-    ],
-    pageSize: 15,
-    change: function (e) {
-      // Local storage backup & recalculate stats on data edit
-      const rawData = gridDataSource.data().toJSON();
-      localStorage.setItem("kendo_expense_items", JSON.stringify(rawData));
-      updateStatistics(rawData);
-      
-      if (e.action) {
-        setUnsavedStatus(true);
-      }
-    }
-  });
-
-  // 5. Kendo Grid Component
-  const grid = $("#grid").kendoGrid({
-    dataSource: gridDataSource,
-    pageable: {
-      refresh: true,
-      pageSizes: [10, 15, 25, 50, "Tất cả"],
-      messages: {
-        display: "Hiển thị {0} - {1} trong tổng {2} dòng chi tiêu",
-        empty: "Chưa có dữ liệu chi tiêu nào",
-        itemsPerPage: "dòng mỗi trang"
-      }
-    },
-    sortable: true,
-    filterable: {
-      extra: false,
-      operators: {
-        string: { contains: "Chứa từ", startswith: "Bắt đầu bằng", eq: "Bằng" }
-      }
-    },
-    editable: {
-      mode: "incell",
-      confirmation: "Bạn có chắc chắn muốn xoá dòng chi tiêu này không?"
-    },
-    toolbar: [
-      {
-        template: `
-          <div class="flex flex-wrap items-center justify-between gap-3 w-full p-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <button id="btn-grid-add-row" class="k-button k-button-solid-primary k-button-md rounded-lg flex items-center gap-1 font-semibold">
-                <span class="k-icon k-i-plus"></span> Thêm dòng mới
-              </button>
-              <button id="btn-grid-clear-all" class="k-button k-button-solid-base k-button-md rounded-lg text-red-600 flex items-center gap-1">
-                <span class="k-icon k-i-trash"></span> Xoá tất cả dòng
-              </button>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <button id="btn-sync-sheets" class="k-button k-button-solid-success k-button-md rounded-lg font-bold flex items-center gap-1.5 shadow-sm">
-                <span class="k-icon k-i-upload"></span> Lưu vào Google Sheet
-              </button>
-              <button id="btn-reload-sheets" class="k-button k-button-solid-info k-button-md rounded-lg flex items-center gap-1">
-                <span class="k-icon k-i-download"></span> Tải lại từ Sheet
-              </button>
-            </div>
-          </div>
-        `
-      }
-    ],
-    columns: [
-      {
-        field: "date",
-        title: "Ngày tháng",
-        width: "140px",
-        template: function (data) {
-          return `<div class="font-medium text-slate-700 flex items-center gap-1.5"><span class="k-icon k-i-calendar text-slate-400"></span> ${escapeHtml(data.date)}</div>`;
-        }
-      },
-      {
-        field: "spender",
-        title: "Tên người chi tiêu",
-        width: "180px",
-        template: function (data) {
-          return `<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">${escapeHtml(data.spender || "Chưa nhập")}</span>`;
-        }
-      },
-      {
-        field: "expense",
-        title: "Tên chi phí / Nội dung",
-        template: function (data) {
-          return `<span class="font-medium text-slate-800">${escapeHtml(data.expense || "Chưa nhập")}</span>`;
-        }
-      },
-      {
-        field: "amount",
-        title: "Số tiền (VNĐ)",
-        width: "180px",
-        format: "{0:n0} ₫",
-        attributes: { style: "text-align: right; font-size: 0.95rem;" },
-        headerAttributes: { style: "text-align: right;" },
-        footerAttributes: { style: "text-align: right; font-weight: 700; font-size: 1rem; color: #059669;" },
-        template: function (data) {
-          return `<span class="font-semibold text-emerald-700">${kendo.toString(data.amount || 0, "n0")} ₫</span>`;
-        },
-        footerTemplate: "Tổng: #= kendo.toString(sum || 0, 'n0') # ₫"
-      },
-      {
-        command: [
-          {
-            name: "destroy",
-            text: "Xoá",
-            iconClass: "k-i-delete"
-          }
-        ],
-        title: "Thao tác",
-        width: "110px",
-        attributes: { style: "text-align: center;" }
-      }
-    ]
-  }).data("kendoGrid");
-
-  // --- Statistics Calculation ---
-  function updateStatistics(items) {
-    if (!items || !Array.isArray(items)) items = [];
-    
-    const todayStr = getTodayFormatted();
-    let totalAmount = 0;
-    let todayAmount = 0;
-    let highestItem = { expense: "-", amount: 0 };
-    const spenderCounts = {};
-
-    items.forEach(item => {
-      const amt = parseFloat(item.amount) || 0;
-      totalAmount += amt;
-
-      if (item.date === todayStr) {
-        todayAmount += amt;
-      }
-
-      if (amt > highestItem.amount) {
-        highestItem = { expense: item.expense || "Chi phí", amount: amt };
-      }
-
-      if (item.spender) {
-        spenderCounts[item.spender] = (spenderCounts[item.spender] || 0) + amt;
-      }
-    });
-
-    let topSpender = "-";
-    let topSpenderAmt = 0;
-    Object.keys(spenderCounts).forEach(sp => {
-      if (spenderCounts[sp] > topSpenderAmt) {
-        topSpender = sp;
-        topSpenderAmt = spenderCounts[sp];
-      }
-    });
-
-    $("#stat-total-amount").text(`${kendo.toString(totalAmount, "n0")} ₫`);
-    $("#stat-today-amount").text(`${kendo.toString(todayAmount, "n0")} ₫`);
-    $("#stat-total-count").text(`${items.length} giao dịch`);
-    $("#stat-top-spender").text(topSpender !== "-" ? `${topSpender} (${kendo.toString(topSpenderAmt, "n0")} ₫)` : "-");
-  }
-
-  // Calculate initial statistics
-  updateStatistics(gridDataSource.data().toJSON());
-
-  // --- Quick Amount Preset Buttons ---
-  $(".btn-preset-amount").on("click", function () {
-    const valToAdd = parseInt($(this).attr("data-val") || "0", 10);
-    const currentVal = amountBox.value() || 0;
-    amountBox.value(currentVal + valToAdd);
-  });
-
-  $("#btn-reset-form").on("click", function () {
-    $("#input-spender").val("");
-    $("#input-expense").val("");
-    amountBox.value(null);
-    datePicker.value(new Date());
-  });
-
-  // --- Main Form Submission (Submit & Auto Save to Google Sheet) ---
-  $("#btn-add-expense").on("click", function (e) {
-    e.preventDefault();
-
-    const dateVal = datePicker.value();
-    const formattedDate = dateVal ? kendo.toString(dateVal, "dd/MM/yyyy") : getTodayFormatted();
-    const spenderVal = $.trim($("#input-spender").val());
-    const expenseVal = $.trim($("#input-expense").val());
-    const amountVal = amountBox.value();
-
-    if (!spenderVal) {
-      showToast("Vui lòng nhập tên người chi tiêu!", "error");
-      $("#input-spender").focus();
-      return;
+    if (type === 'success') {
+      bgClasses = 'bg-emerald-50 text-emerald-900 border-emerald-200';
+      icon = 'fa-circle-check text-emerald-600';
+    } else if (type === 'error') {
+      bgClasses = 'bg-rose-50 text-rose-900 border-rose-200';
+      icon = 'fa-circle-exclamation text-rose-600';
     }
 
-    if (!expenseVal) {
-      showToast("Vui lòng nhập tên/nội dung chi phí!", "error");
-      $("#input-expense").focus();
-      return;
-    }
-
-    if (amountVal === null || amountVal === undefined || amountVal < 0) {
-      showToast("Vui lòng nhập số tiền chi hợp lệ!", "error");
-      amountBox.focus();
-      return;
-    }
-
-    // 1. Add item to Kendo Grid locally
-    gridDataSource.add({
-      id: generateId(),
-      date: formattedDate,
-      spender: spenderVal,
-      expense: expenseVal,
-      amount: amountVal
-    });
-
-    const $btn = $(this);
-    const originalBtnHtml = $btn.html();
-    $btn.prop("disabled", true).addClass("opacity-75").html(`<span class="k-icon k-i-loading animate-spin"></span> Đang gửi & lưu vào Sheet...`);
-
-    // 2. Auto Append to Google Sheet 'chitieucuaNganvaToan.xlsx'
-    $.ajax({
-      url: "/api/sheets/append-default",
-      type: "POST",
-      contentType: "application/json",
-      data: JSON.stringify({
-        date: formattedDate,
-        spender: spenderVal,
-        expense: expenseVal,
-        amount: amountVal,
-        targetSheetName: "chitieucuaNganvaToan.xlsx"
-      }),
-      success: function (res) {
-        $btn.prop("disabled", false).removeClass("opacity-75").html(originalBtnHtml);
-
-        if (res.spreadsheetId) {
-          selectedSpreadsheetId = res.spreadsheetId;
-          localStorage.setItem("selectedSpreadsheetId", res.spreadsheetId);
-          updateOpenSheetLink();
-          setUnsavedStatus(false);
-        }
-
-        showToast(`Đã gửi & tự động lưu vào Google Sheet "${res.spreadsheetName || 'chitieucuaNganvaToan.xlsx'}" thành công!`, "success");
-
-        // Clear input fields for next entry
-        $("#input-expense").val("").focus();
-        amountBox.value(null);
-      },
-      error: function (xhr) {
-        $btn.prop("disabled", false).removeClass("opacity-75").html(originalBtnHtml);
-        const err = xhr.responseJSON ? xhr.responseJSON.error : "Không thể tự động lưu vào Google Sheet.";
-        
-        if (xhr.status === 401) {
-          showToast(`Đã thêm vào bảng. Vui lòng bấm 'Kết nối Google Sheets' ở góc trên để lưu trực tiếp vào file chitieucuaNganvaToan.xlsx!`, "info");
-        } else {
-          showToast(`Lỗi: ${err}`, "error");
-        }
-
-        // Clear input fields for next entry anyway
-        $("#input-expense").val("").focus();
-        amountBox.value(null);
-      }
-    });
-  });
-
-  // Grid Toolbar Buttons Handlers
-  $(document).on("click", "#btn-grid-add-row", function () {
-    const newRow = gridDataSource.insert(0, {
-      id: generateId(),
-      date: getTodayFormatted(),
-      spender: "Tôi",
-      expense: "Chi phí mới",
-      amount: 0
-    });
-    showToast("Đã thêm 1 dòng mới vào bảng", "info");
-  });
-
-  $(document).on("click", "#btn-grid-clear-all", function () {
-    if (confirm("Bạn có chắc chắn muốn xoá toàn bộ các dòng chi tiêu trong bảng?")) {
-      gridDataSource.data([]);
-      showToast("Đã xoá toàn bộ danh sách chi tiêu", "info");
-    }
-  });
-
-  $(document).on("click", "#btn-sync-sheets", function () {
-    saveDataToGoogleSheet();
-  });
-
-  $(document).on("click", "#btn-reload-sheets", function () {
-    if (selectedSpreadsheetId) {
-      loadSheetData(selectedSpreadsheetId);
-    } else {
-      showToast("Vui lòng chọn hoặc tạo 1 Google Sheet trước", "error");
-    }
-  });
-
-  // --- Unsaved Changes Status ---
-  function setUnsavedStatus(isUnsaved) {
-    unsavedChanges = isUnsaved;
-    const $badge = $("#sync-status-badge");
-    if (isUnsaved) {
-      $badge.removeClass("bg-emerald-100 text-emerald-800 border-emerald-200")
-            .addClass("bg-amber-100 text-amber-800 border-amber-200")
-            .html("<span class='w-2 h-2 rounded-full bg-amber-500 animate-pulse'></span> Có thay đổi chưa lưu vào Google Sheet");
-    } else {
-      $badge.removeClass("bg-amber-100 text-amber-800 border-amber-200")
-            .addClass("bg-emerald-100 text-emerald-800 border-emerald-200")
-            .html("<span class='w-2 h-2 rounded-full bg-emerald-500'></span> Đã đồng bộ với Google Sheet");
-    }
-  }
-
-  // ================= GOOGLE AUTH & SHEETS INTEGRATION =================
-
-  function checkAuthStatus() {
-    $.getJSON("/api/auth/status", function (res) {
-      if (res.authenticated && res.user) {
-        isGoogleAuth = true;
-        renderLoggedInUser(res.user);
-        loadUserSpreadsheets();
-      } else {
-        isGoogleAuth = false;
-        renderLoggedOutUser(res.hasCredentials);
-      }
-    }).fail(function () {
-      renderLoggedOutUser(false);
-    });
-  }
-
-  function renderLoggedInUser(user) {
-    $("#auth-container").html(`
-      <div class="flex items-center gap-3">
-        <img src="${escapeHtml(user.picture || 'https://lh3.googleusercontent.com/a/default-user')}" alt="Avatar" class="w-8 h-8 rounded-full border border-slate-200" />
-        <div class="text-left hidden sm:block">
-          <div class="text-xs font-semibold text-slate-800">${escapeHtml(user.name || "Người dùng")}</div>
-          <div class="text-[11px] text-slate-500">${escapeHtml(user.email || "")}</div>
+    const toastHtml = `
+      <div id="${id}" class="pointer-events-auto flex items-center justify-between p-3.5 rounded-xl shadow-lg border text-sm font-semibold transition-all transform animate-slide-in ${bgClasses}">
+        <div class="flex items-center gap-2.5">
+          <i class="fa-solid ${icon}"></i>
+          <span>${escapeHtml(text)}</span>
         </div>
-        <button id="btn-logout-google" class="px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200">
-          Đăng xuất
+        <button type="button" class="btn-close-toast p-1 text-slate-400 hover:text-slate-600 rounded-lg ml-3">
+          <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
-    `);
+    `;
 
-    $("#btn-logout-google").on("click", function () {
-      $.post("/api/auth/logout", function () {
-        showToast("Đã đăng xuất tài khoản Google", "info");
-        checkAuthStatus();
+    $('#toast-container').append(toastHtml);
+
+    setTimeout(() => {
+      $(`#${id}`).fadeOut(300, function () {
+        $(this).remove();
       });
-    });
+    }, 3800);
   }
 
-  function renderLoggedOutUser(hasCredentials) {
-    $("#auth-container").html(`
-      <button id="btn-login-google" class="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-all flex items-center gap-2">
-        <svg class="w-4 h-4 text-white fill-current" viewBox="0 0 24 24">
-          <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4 0-2.05 1.53-3.76 3.56-3.97l1.07-.11.5-.95C8.08 7.14 9.94 6 12 6c2.62 0 4.88 1.86 5.39 4.43l.3 1.5 1.53.11c1.56.1 2.78 1.41 2.78 2.96 0 1.65-1.35 3-3 3z"/>
-        </svg>
-        Kết nối Google Sheets
-      </button>
-    `);
-
-    $("#btn-login-google").on("click", function () {
-      $.getJSON("/api/auth/url", function (res) {
-        if (res.url) {
-          const width = 550;
-          const height = 650;
-          const left = (screen.width - width) / 2;
-          const top = (screen.height - height) / 2;
-          window.open(res.url, "GoogleAuthPopup", `width=${width},height=${height},top=${top},left=${left}`);
-        } else {
-          showToast("Chưa cấu hình OAuth Client ID", "error");
-        }
-      }).fail(function (xhr) {
-        const err = xhr.responseJSON ? xhr.responseJSON.error : "Không thể lấy liên kết đăng nhập";
-        showToast(err, "error");
-      });
-    });
-  }
-
-  // Listen for popup authentication callback success
-  window.addEventListener("message", function (event) {
-    if (event.data === "oauth-success") {
-      showToast("Đã kết nối tài khoản Google thành công!", "success");
-      checkAuthStatus();
-    }
+  $(document).on('click', '.btn-close-toast', function () {
+    $(this).closest('[id^="toast-"]').remove();
   });
 
-  // Load User's Google Sheets files
-  function loadUserSpreadsheets() {
-    $("#sheet-select-container").html(`
-      <div class="flex items-center gap-2 text-xs text-slate-500">
-        <span class="k-icon k-i-loading animate-spin"></span> Đang tải danh sách Google Sheets...
-      </div>
-    `);
-
-    $.getJSON("/api/sheets/list", function (res) {
-      const files = res.files || [];
-      
-      let optionsHtml = `<option value="">-- Chọn một Google Sheet để lưu --</option>`;
-      optionsHtml += `<option value="NEW_SHEET">+ [Tạo Google Sheet mới]</option>`;
-
-      files.forEach(f => {
-        const isSelected = f.id === selectedSpreadsheetId ? "selected" : "";
-        optionsHtml += `<option value="${escapeHtml(f.id)}" ${isSelected}>📊 ${escapeHtml(f.name)}</option>`;
-      });
-
-      $("#sheet-select-container").html(`
-        <div class="flex flex-wrap items-center gap-2">
-          <select id="sheet-dropdown" class="px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none min-w-[240px]">
-            ${optionsHtml}
-          </select>
-          <button id="btn-create-sheet-modal" class="px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors flex items-center gap-1">
-            <span class="k-icon k-i-plus"></span> Tạo Sheet mới
-          </button>
-          <a id="link-open-sheet" href="#" target="_blank" class="hidden px-2.5 py-1.5 text-xs text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg flex items-center gap-1">
-            <span class="k-icon k-i-hyperlink-open text-slate-500"></span> Mở trang
-          </a>
-        </div>
-      `);
-
-      updateOpenSheetLink();
-
-      $("#sheet-dropdown").on("change", function () {
-        const val = $(this).val();
-        if (val === "NEW_SHEET") {
-          promptCreateNewSheet();
-        } else if (val) {
-          selectedSpreadsheetId = val;
-          localStorage.setItem("selectedSpreadsheetId", val);
-          updateOpenSheetLink();
-          loadSheetData(val);
-        } else {
-          selectedSpreadsheetId = "";
-          localStorage.removeItem("selectedSpreadsheetId");
-          updateOpenSheetLink();
-        }
-      });
-
-      $("#btn-create-sheet-modal").on("click", function () {
-        promptCreateNewSheet();
-      });
-
-    }).fail(function () {
-      $("#sheet-select-container").html(`
-        <div class="text-xs text-red-600">Lỗi khi tải danh sách Google Sheets.</div>
-      `);
-    });
+  // --- HELPER FUNCTIONS ---
+  function getTodayYYYYMMDD() {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   }
 
-  function updateOpenSheetLink() {
-    const $link = $("#link-open-sheet");
-    if (selectedSpreadsheetId) {
-      $link.attr("href", `https://docs.google.com/spreadsheets/d/${selectedSpreadsheetId}`).removeClass("hidden");
-    } else {
-      $link.addClass("hidden");
+  function formatDateDDMMYYYY(dateStr) {
+    if (!dateStr) return '';
+    if (dateStr.includes('/')) return dateStr;
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
     }
+    return dateStr;
   }
 
-  function promptCreateNewSheet() {
-    const defaultTitle = `Sổ Chi Tiêu Hàng Ngày - ${kendo.toString(new Date(), "dd/MM/yyyy")}`;
-    const title = prompt("Nhập tên cho file Google Sheet mới:", defaultTitle);
-    
-    if (title && $.trim(title)) {
-      showToast("Đang khởi tạo Google Sheet mới...", "info");
-      $.ajax({
-        url: "/api/sheets/create",
-        type: "POST",
-        contentType: "application/json",
-        data: JSON.stringify({ title: $.trim(title) }),
-        success: function (res) {
-          showToast(`Đã tạo Google Sheet: ${res.title}`, "success");
-          selectedSpreadsheetId = res.spreadsheetId;
-          localStorage.setItem("selectedSpreadsheetId", res.spreadsheetId);
-          loadUserSpreadsheets();
-        },
-        error: function (xhr) {
-          const err = xhr.responseJSON ? xhr.responseJSON.error : "Không thể tạo Google Sheet";
-          showToast(err, "error");
-        }
-      });
+  function formatYYYYMMDD(dateStr) {
+    if (!dateStr) return getTodayYYYYMMDD();
+    if (dateStr.includes('-')) return dateStr;
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
     }
+    return getTodayYYYYMMDD();
   }
 
-  // Load Data from Google Sheet into Kendo Grid
-  function loadSheetData(spreadsheetId) {
-    showToast("Đang tải dữ liệu từ Google Sheet...", "info");
-    $.getJSON(`/api/sheets/data?spreadsheetId=${spreadsheetId}`, function (res) {
-      const items = res.items || [];
-      gridDataSource.data(items.map(item => ({
-        id: generateId(),
-        date: item.date || getTodayFormatted(),
-        spender: item.spender || "Tôi",
-        expense: item.expense || "Chi phí",
-        amount: parseFloat(item.amount) || 0
-      })));
-
-      setUnsavedStatus(false);
-      showToast(`Tải thành công ${items.length} dòng dữ liệu từ Google Sheet!`, "success");
-    }).fail(function (xhr) {
-      const err = xhr.responseJSON ? xhr.responseJSON.error : "Lỗi khi nạp dữ liệu từ Google Sheet";
-      showToast(err, "error");
-    });
-  }
-
-  // Save current Kendo Grid data to Google Sheet
-  function saveDataToGoogleSheet() {
-    if (!isGoogleAuth) {
-      showToast("Vui lòng click 'Kết nối Google Sheets' ở góc trên trước!", "error");
-      return;
+  function parseAmountInK(val) {
+    let num = parseFloat(val) || 0;
+    if (num > 0 && num < 1000) {
+      return num * 1000;
     }
-
-    if (!selectedSpreadsheetId) {
-      showToast("Vui lòng chọn hoặc tạo 1 file Google Sheet để lưu!", "error");
-      return;
-    }
-
-    const items = gridDataSource.data().toJSON();
-    if (items.length === 0) {
-      if (!confirm("Bảng hiện đang trống. Bạn có muốn lưu bảng trống vào Google Sheet không?")) {
-        return;
-      }
-    }
-
-    showToast("Đang đồng bộ dữ liệu vào Google Sheet...", "info");
-
-    $.ajax({
-      url: "/api/sheets/save",
-      type: "POST",
-      contentType: "application/json",
-      data: JSON.stringify({
-        spreadsheetId: selectedSpreadsheetId,
-        items: items
-      }),
-      success: function (res) {
-        setUnsavedStatus(false);
-        showToast(`Đã lưu thành công ${res.count} dòng chi tiêu vào Google Sheet!`, "success");
-      },
-      error: function (xhr) {
-        const err = xhr.responseJSON ? xhr.responseJSON.error : "Không thể lưu dữ liệu vào Google Sheet";
-        showToast(err, "error");
-      }
-    });
+    return num;
   }
 
-  // Helper Utils
-  function getTodayFormatted() {
-    return kendo.toString(new Date(), "dd/MM/yyyy");
-  }
-
-  function generateId() {
-    return "exp-" + Math.random().toString(36).substr(2, 9);
+  function formatCurrency(num) {
+    return new Intl.NumberFormat('vi-VN').format(num || 0) + ' ₫';
   }
 
   function escapeHtml(str) {
-    if (!str) return "";
+    if (!str) return '';
     return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
-  // Initial Auth Check
-  checkAuthStatus();
+  function extractMonthYear(dateStr) {
+    if (!dateStr) return '';
+    if (dateStr.includes('/')) {
+      const parts = dateStr.split('/');
+      if (parts.length === 3) return `${parts[1]}/${parts[2]}`;
+    }
+    if (dateStr.includes('-')) {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) return `${parts[1]}/${parts[0]}`;
+    }
+    return '';
+  }
+
+  function getCurrentMonthYearStr() {
+    const d = new Date();
+    return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  }
+
+  // --- LOCAL STORAGE DATA HELPERS ---
+  function getLocalExpenses() {
+    try {
+      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveLocalExpenses(data) {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.error('LocalStorage write error:', e);
+    }
+  }
+
+  function formatSpenderName(uStr) {
+    if (!uStr) return 'Ngăn ❤️❤️❤️';
+    const str = String(uStr).toLowerCase();
+    if (str.includes('tòn') || str.includes('ton')) {
+      return 'Tòn 🐷🐷🐷';
+    }
+    return 'Ngăn ❤️❤️❤️';
+  }
+
+  function normalizeExpensesData(rawList) {
+    if (!Array.isArray(rawList)) return [];
+
+    const flattened = [];
+
+    rawList.forEach((doc, docIdx) => {
+      if (!doc) return;
+
+      const docId = doc._id || `loc-${Date.now()}-${docIdx}`;
+      const docDate = formatDateDDMMYYYY(doc.date || getTodayYYYYMMDD());
+      const docUser = doc.user || doc.spender || 'ngân';
+      const spenderDisplay = formatSpenderName(docUser);
+
+      if (Array.isArray(doc.used) && doc.used.length > 0) {
+        doc.used.forEach((item, itemIdx) => {
+          if (!item) return;
+          const itemName = item.name || item.expense || 'Chi tiêu';
+          const priceRaw = item.price || item.amount || 0;
+          const amtVal = parseAmountInK(priceRaw);
+
+          flattened.push({
+            _id: `${docId}_${itemIdx}`,
+            doc_id: docId,
+            item_index: itemIdx,
+            date: docDate,
+            user: docUser,
+            spender: spenderDisplay,
+            expense: itemName,
+            amount: amtVal,
+            price: priceRaw,
+            created_at: doc.created_at || new Date().toISOString(),
+            raw_doc: doc,
+          });
+        });
+      } else {
+        const itemName = doc.expense || doc.name || 'Chi tiêu';
+        const priceRaw = doc.price || doc.amount || 0;
+        const amtVal = parseAmountInK(priceRaw);
+
+        flattened.push({
+          _id: docId,
+          doc_id: docId,
+          item_index: 0,
+          date: docDate,
+          user: docUser,
+          spender: spenderDisplay,
+          expense: itemName,
+          amount: amtVal,
+          price: priceRaw,
+          created_at: doc.created_at || new Date().toISOString(),
+          raw_doc: doc,
+        });
+      }
+    });
+
+    return flattened;
+  }
+
+  // --- DATA FETCHING (SERVER API -> RESTDB -> LOCALSTORAGE FALLBACK) ---
+  function loadExpenses() {
+    $('#btn-reload-data i').addClass('fa-spin');
+
+    // 1. First try Express proxy API /api/expenses
+    $.ajax({
+      url: '/api/expenses',
+      method: 'GET',
+      timeout: 5000,
+      success: function (res) {
+        $('#btn-reload-data i').removeClass('fa-spin');
+        if (res && res.success && Array.isArray(res.items)) {
+          const localDocs = getLocalExpenses();
+          const serverIds = new Set(res.items.map((i) => i._id));
+          const uniqueLocal = localDocs.filter((l) => l._id && !serverIds.has(l._id));
+          rawDocs = [...res.items, ...uniqueLocal];
+
+          saveLocalExpenses(rawDocs);
+          expensesList = normalizeExpensesData(rawDocs);
+          updateRestDbStatus(true, 'Đã kết nối Hệ thống');
+          renderAll();
+          showToast(`Đã nạp thành công ${expensesList.length} khoản chi tiêu!`, 'success');
+        } else {
+          fallbackToDirectRestDbOrLocal();
+        }
+      },
+      error: function () {
+        // Express endpoint failed or static environment (GitHub Pages)
+        fallbackToDirectRestDbOrLocal();
+      },
+    });
+  }
+
+  function fallbackToDirectRestDbOrLocal() {
+    // 2. Direct AJAX to RestDB.io with x-apikey
+    $.ajax({
+      url: RESTDB_URL,
+      method: 'GET',
+      headers: {
+        'x-apikey': RESTDB_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000,
+      success: function (data) {
+        $('#btn-reload-data i').removeClass('fa-spin');
+        if (Array.isArray(data)) {
+          const localDocs = getLocalExpenses();
+          const serverIds = new Set(data.map((i) => i._id));
+          const uniqueLocal = localDocs.filter((l) => l._id && !serverIds.has(l._id));
+          rawDocs = [...data, ...uniqueLocal];
+
+          saveLocalExpenses(rawDocs);
+          expensesList = normalizeExpensesData(rawDocs);
+          updateRestDbStatus(true, 'Đã kết nối Trực tuyến');
+          renderAll();
+          showToast(`Đã tải ${expensesList.length} khoản chi tiêu!`, 'success');
+        } else {
+          fallbackToLocalStorageOnly();
+        }
+      },
+      error: function () {
+        fallbackToLocalStorageOnly();
+      },
+    });
+  }
+
+  function fallbackToLocalStorageOnly() {
+    $('#btn-reload-data i').removeClass('fa-spin');
+    rawDocs = getLocalExpenses();
+    expensesList = normalizeExpensesData(rawDocs);
+    updateRestDbStatus(false, 'Bộ nhớ Máy');
+    renderAll();
+    showToast(`Sử dụng dữ liệu lưu sẵn (${expensesList.length} khoản chi)`, 'info');
+  }
+
+  function updateRestDbStatus(isConnected, label) {
+    const $badge = $('#restdb-status-badge');
+    const $text = $('#restdb-status-text');
+
+    if (isConnected) {
+      $badge
+        .removeClass('bg-amber-50 border-amber-200 text-amber-800')
+        .addClass('bg-emerald-50 border-emerald-200 text-emerald-800');
+      $badge.find('span.rounded-full').removeClass('bg-amber-500').addClass('bg-emerald-500');
+      $text.text(label || 'Đã kết nối Hệ thống');
+    } else {
+      $badge
+        .removeClass('bg-emerald-50 border-emerald-200 text-emerald-800')
+        .addClass('bg-amber-50 border-amber-200 text-amber-800');
+      $badge.find('span.rounded-full').removeClass('bg-emerald-500').addClass('bg-amber-500');
+      $text.text(label || 'Bộ nhớ Trình duyệt');
+    }
+  }
+
+  // --- MULTI-ROW FORM LOGIC ---
+  function addFormRow(expenseVal = '', amountVal = '') {
+    const rowId = 'row-' + Math.random().toString(36).substring(2, 9);
+    const rowCount = $('#expense-rows-body tr').length + 1;
+
+    let displayAmt = '';
+    if (amountVal !== '' && amountVal !== null && amountVal !== undefined) {
+      const num = parseFloat(amountVal) || 0;
+      displayAmt = num >= 1000 ? num / 1000 : num;
+      if (displayAmt === 0) displayAmt = '';
+    }
+
+    const rowHtml = `
+      <tr id="${rowId}" class="entry-row hover:bg-slate-50 transition-colors">
+        <td class="row-stt py-2 px-3 text-center text-xs font-bold text-slate-400 select-none">${rowCount}</td>
+        <td class="py-2 px-2">
+          <input type="text" class="input-row-expense w-full px-3 py-1.5 text-sm font-medium text-slate-800 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none" placeholder="Ví dụ: Đi chợ, Ăn trưa, Cà phê, Xăng xe..." value="${escapeHtml(expenseVal)}" />
+        </td>
+        <td class="py-2 px-2">
+          <div class="relative flex items-center">
+            <input type="number" step="any" min="0" class="input-row-amount w-full px-3 py-1.5 text-sm font-bold text-emerald-700 text-right bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none pr-16" placeholder="Ví dụ: 100 (=100k)" value="${displayAmt}" />
+            <span class="preview-formatted-amt absolute right-2 text-xs font-semibold text-slate-400 pointer-events-none">
+              ${displayAmt ? formatCurrency(parseAmountInK(displayAmt)) : 'k ₫'}
+            </span>
+          </div>
+        </td>
+        <td class="py-2 px-2 text-center">
+          <button type="button" class="btn-delete-row p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" title="Xoá dòng này">
+            <i class="fa-solid fa-trash-can text-rose-500"></i>
+          </button>
+        </td>
+      </tr>
+    `;
+
+    $('#expense-rows-body').append(rowHtml);
+    updateRowIndices();
+    calculateBatchTotal();
+  }
+
+  function updateRowIndices() {
+    $('#expense-rows-body tr').each(function (idx) {
+      $(this).find('.row-stt').text(idx + 1);
+    });
+  }
+
+  function calculateBatchTotal() {
+    let total = 0;
+    $('#expense-rows-body tr').each(function () {
+      const amtStr = $(this).find('.input-row-amount').val();
+      const amt = parseAmountInK(amtStr);
+      total += amt;
+
+      // Update row live preview label
+      const $preview = $(this).find('.preview-formatted-amt');
+      if (amtStr && parseFloat(amtStr) > 0) {
+        $preview.html(`<span class="text-emerald-600 font-bold">${formatCurrency(amt)}</span>`);
+      } else {
+        $preview.text('k ₫');
+      }
+    });
+    $('#batch-total-display').text(formatCurrency(total));
+    return total;
+  }
+
+  // --- EVENT BINDINGS ---
+  function bindEvents() {
+    // Reload button
+    $('#btn-reload-data').on('click', function () {
+      loadExpenses();
+    });
+
+    // Spender toggle
+    $('.btn-spender-option').on('click', function () {
+      $('.btn-spender-option')
+        .removeClass('bg-pink-50 border-pink-500 text-pink-700 bg-amber-50 border-amber-500 text-amber-900 shadow-xs')
+        .addClass('bg-white border-slate-200 text-slate-600 hover:bg-slate-50');
+
+      selectedSpender = $(this).data('spender');
+
+      if (selectedSpender.includes('Ngăn')) {
+        $(this).addClass('bg-pink-50 border-pink-500 text-pink-700 shadow-xs');
+      } else {
+        $(this).addClass('bg-amber-50 border-amber-500 text-amber-900 shadow-xs');
+      }
+    });
+
+    // Add row button
+    $('#btn-add-row').on('click', function () {
+      addFormRow();
+    });
+
+    // Delete row button
+    $(document).on('click', '.btn-delete-row', function () {
+      if ($('#expense-rows-body tr').length > 1) {
+        $(this).closest('tr').remove();
+        updateRowIndices();
+        calculateBatchTotal();
+      } else {
+        // If only 1 row, clear its values
+        const $row = $(this).closest('tr');
+        $row.find('input').val('');
+        calculateBatchTotal();
+      }
+    });
+
+    // Auto append new row when typing in the last row
+    $(document).on('input', '.input-row-expense, .input-row-amount', function () {
+      activeFocusRowId = $(this).closest('tr').attr('id');
+      calculateBatchTotal();
+
+      const $lastRow = $('#expense-rows-body tr:last-child');
+      const expVal = $.trim($lastRow.find('.input-row-expense').val());
+      const amtVal = $.trim($lastRow.find('.input-row-amount').val());
+
+      if (expVal !== '' || amtVal !== '') {
+        addFormRow();
+      }
+    });
+
+    // Quick presets
+    $('.btn-preset-amount').on('click', function () {
+      const addK = parseFloat($(this).data('val')) || 0;
+      let $targetRow = activeFocusRowId ? $(`#${activeFocusRowId}`) : $('#expense-rows-body tr:last-child');
+
+      if (!$targetRow.length) {
+        $targetRow = $('#expense-rows-body tr:first-child');
+      }
+
+      const $amtInput = $targetRow.find('.input-row-amount');
+      const currentVal = parseFloat($amtInput.val()) || 0;
+      const nextVal = currentVal + addK;
+      $amtInput.val(nextVal).trigger('input');
+    });
+
+    // Reset Form
+    $('#btn-reset-form').on('click', function () {
+      $('#expense-rows-body').empty();
+      addFormRow();
+      $('#input-date').val(getTodayYYYYMMDD());
+      $('#btn-spender-ngan').trigger('click');
+      showToast('Đã làm mới form nhập', 'info');
+    });
+
+    // Submit Expenses
+    $('#btn-submit-expenses').on('click', function () {
+      submitExpensesForm();
+    });
+
+    // Month filter change
+    $('#select-month-filter').on('change', function () {
+      selectedMonthFilter = $(this).val();
+      currentPage = 1;
+      renderAll();
+    });
+
+    // Search input
+    $('#search-input').on('input', function () {
+      searchQuery = $.trim($(this).val());
+      currentPage = 1;
+      if (searchQuery !== '') {
+        $('#btn-clear-search').removeClass('hidden');
+      } else {
+        $('#btn-clear-search').addClass('hidden');
+      }
+      renderTable();
+    });
+
+    $('#btn-clear-search').on('click', function () {
+      $('#search-input').val('');
+      searchQuery = '';
+      $(this).addClass('hidden');
+      currentPage = 1;
+      renderTable();
+    });
+
+    // Sort headers
+    $(document).on('click', '.th-sortable', function () {
+      const field = $(this).data('sort');
+      if (sortField === field) {
+        sortAsc = !sortAsc;
+      } else {
+        sortField = field;
+        sortAsc = true;
+      }
+      renderTable();
+    });
+
+    // Page size & Pagination
+    $('#select-page-size').on('change', function () {
+      pageSize = parseInt($(this).val()) || 15;
+      currentPage = 1;
+      renderTable();
+    });
+
+    $('#btn-prev-page').on('click', function () {
+      if (currentPage > 1) {
+        currentPage--;
+        renderTable();
+      }
+    });
+
+    $('#btn-next-page').on('click', function () {
+      const maxPages = Math.ceil(getFilteredItems().length / pageSize) || 1;
+      if (currentPage < maxPages) {
+        currentPage++;
+        renderTable();
+      }
+    });
+
+    // Inline Table Actions (Edit & Delete)
+    $(document).on('click', '.btn-inline-edit', function () {
+      const id = $(this).data('id');
+      editingRowId = id;
+      renderTable();
+    });
+
+    $(document).on('click', '.btn-inline-cancel', function () {
+      editingRowId = null;
+      renderTable();
+    });
+
+    $(document).on('click', '.btn-inline-save', function () {
+      const id = $(this).data('id');
+      saveInlineEdit(id);
+    });
+
+    $(document).on('click', '.btn-inline-delete', function () {
+      const id = $(this).data('id');
+      deleteExpenseItem(id);
+    });
+  }
+
+  // --- SUBMIT FORM ---
+  function submitExpensesForm() {
+    const rawDate = $('#input-date').val() || getTodayYYYYMMDD();
+    const formattedDate = formatDateDDMMYYYY(rawDate);
+    const userLabel = selectedSpender.includes('Ngăn') ? 'ngân' : 'tòn';
+
+    const usedItems = [];
+    let sumDateVal = 0;
+    let hasInvalidRow = false;
+
+    $('#expense-rows-body tr').each(function () {
+      const expName = $.trim($(this).find('.input-row-expense').val());
+      const amtStr = $(this).find('.input-row-amount').val();
+      const rawAmt = parseFloat(amtStr) || 0;
+
+      if (expName || rawAmt > 0) {
+        if (!expName) {
+          hasInvalidRow = true;
+          $(this).find('.input-row-expense').focus();
+          return false;
+        }
+        if (rawAmt <= 0) {
+          hasInvalidRow = true;
+          $(this).find('.input-row-amount').focus();
+          return false;
+        }
+
+        const priceNum = rawAmt < 1000 ? rawAmt : rawAmt / 1000;
+        sumDateVal += priceNum;
+
+        usedItems.push({
+          name: expName,
+          price: String(priceNum),
+        });
+      }
+    });
+
+    if (hasInvalidRow) {
+      showToast('Vui lòng kiểm tra lại: Tên chi phí không được để trống và số tiền phải > 0!', 'error');
+      return;
+    }
+
+    if (usedItems.length === 0) {
+      showToast('Vui lòng nhập ít nhất 1 khoản chi phí!', 'error');
+      return;
+    }
+
+    // MATCH EXACT USER REQUESTED SCHEMA
+    const payloadSchema = {
+      date: formattedDate,
+      user: userLabel,
+      used: usedItems,
+      sumdate: sumDateVal,
+    };
+
+    const totalAmountInVnd = sumDateVal * 1000;
+
+    const $btn = $('#btn-submit-expenses');
+    $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> Đang lưu...');
+
+    $.ajax({
+      url: '/api/expenses',
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify(payloadSchema),
+      timeout: 6000,
+      success: function (res) {
+        $btn.prop('disabled', false).html('<i class="fa-solid fa-paper-plane"></i> Lưu Chi Tiêu');
+        if (res && res.success) {
+          showToast(`Đã lưu thành công ${usedItems.length} khoản chi (${formatCurrency(totalAmountInVnd)})!`, 'success');
+          $('#btn-reset-form').trigger('click');
+          loadExpenses();
+        } else {
+          saveToDirectRestDbOrLocal(payloadSchema, totalAmountInVnd);
+        }
+      },
+      error: function () {
+        saveToDirectRestDbOrLocal(payloadSchema, totalAmountInVnd);
+      },
+    });
+  }
+
+  function saveToDirectRestDbOrLocal(payloadSchema, totalAmountInVnd) {
+    const $btn = $('#btn-submit-expenses');
+
+    $.ajax({
+      url: RESTDB_URL,
+      method: 'POST',
+      headers: {
+        'x-apikey': RESTDB_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      data: JSON.stringify(payloadSchema),
+      timeout: 6000,
+      success: function (data) {
+        $btn.prop('disabled', false).html('<i class="fa-solid fa-paper-plane"></i> Lưu Chi Tiêu');
+        showToast(`Đã lưu thành công chi tiêu!`, 'success');
+        $('#btn-reset-form').trigger('click');
+        loadExpenses();
+      },
+      error: function () {
+        $btn.prop('disabled', false).html('<i class="fa-solid fa-paper-plane"></i> Lưu Chi Tiêu');
+
+        const createdDoc = {
+          ...payloadSchema,
+          _id: 'loc-' + Date.now(),
+        };
+
+        rawDocs.unshift(createdDoc);
+        saveLocalExpenses(rawDocs);
+        expensesList = normalizeExpensesData(rawDocs);
+
+        showToast(`Đã lưu (${formatCurrency(totalAmountInVnd)}) vào bộ nhớ máy!`, 'success');
+        $('#btn-reset-form').trigger('click');
+        renderAll();
+      },
+    });
+  }
+
+  // --- FILTER & SORT COMPUTATION ---
+  function getFilteredItems() {
+    const currentMY = getCurrentMonthYearStr();
+    const activeMY = selectedMonthFilter === 'CURRENT' ? currentMY : selectedMonthFilter;
+
+    return expensesList.filter((item) => {
+      const my = extractMonthYear(item.date);
+      if (activeMY !== 'ALL' && my !== activeMY) {
+        return false;
+      }
+
+      if (searchQuery !== '') {
+        const query = searchQuery.toLowerCase();
+        const expMatch = String(item.expense || '').toLowerCase().includes(query);
+        const spenderMatch = String(item.spender || '').toLowerCase().includes(query);
+        const dateMatch = String(item.date || '').toLowerCase().includes(query);
+        const amtMatch = String(item.amount || '').includes(query);
+        return expMatch || spenderMatch || dateMatch || amtMatch;
+      }
+
+      return true;
+    });
+  }
+
+  function getSortedItems() {
+    const filtered = getFilteredItems();
+
+    return filtered.sort((a, b) => {
+      let valA = a[sortField] || '';
+      let valB = b[sortField] || '';
+
+      if (sortField === 'amount') {
+        valA = Number(valA) || 0;
+        valB = Number(valB) || 0;
+      } else {
+        valA = String(valA).toLowerCase();
+        valB = String(valB).toLowerCase();
+      }
+
+      if (valA < valB) return sortAsc ? -1 : 1;
+      if (valA > valB) return sortAsc ? 1 : -1;
+      return 0;
+    });
+  }
+
+  // --- RENDER FUNCTIONS ---
+  function renderAll() {
+    renderMonthDropdown();
+    renderKPIs();
+    renderTable();
+  }
+
+  function renderMonthDropdown() {
+    const currentMY = getCurrentMonthYearStr();
+    const set = new Set();
+    set.add(currentMY);
+
+    expensesList.forEach((item) => {
+      const my = extractMonthYear(item.date);
+      if (my) set.add(my);
+    });
+
+    const months = Array.from(set).sort().reverse();
+    const $select = $('#select-month-filter');
+    $select.empty();
+
+    $select.append(`<option value="CURRENT">Tháng này (${currentMY})</option>`);
+    $select.append(`<option value="ALL">Tất cả các tháng</option>`);
+
+    months.forEach((m) => {
+      if (m !== currentMY) {
+        $select.append(`<option value="${m}">Tháng ${m}</option>`);
+      }
+    });
+
+    $select.val(selectedMonthFilter);
+  }
+
+  function renderKPIs() {
+    const currentMY = getCurrentMonthYearStr();
+    const activeMY = selectedMonthFilter === 'CURRENT' ? currentMY : selectedMonthFilter;
+
+    let monthTotal = 0;
+    let nganTotal = 0;
+    let tonTotal = 0;
+    let monthCount = 0;
+    let todayTotal = 0;
+
+    const todayFormatted = formatDateDDMMYYYY(getTodayYYYYMMDD());
+
+    expensesList.forEach((item) => {
+      const my = extractMonthYear(item.date);
+      const amt = Number(item.amount) || 0;
+      const formattedItemDate = formatDateDDMMYYYY(item.date);
+
+      if (activeMY === 'ALL' || my === activeMY) {
+        monthTotal += amt;
+        monthCount++;
+
+        const spender = String(item.spender || '');
+        if (spender.includes('Ngăn')) {
+          nganTotal += amt;
+        } else if (spender.includes('Tòn')) {
+          tonTotal += amt;
+        } else {
+          nganTotal += amt;
+        }
+      }
+
+      if (formattedItemDate === todayFormatted) {
+        todayTotal += amt;
+      }
+    });
+
+    const nganPercent = monthTotal > 0 ? Math.round((nganTotal / monthTotal) * 100) : 0;
+    const tonPercent = monthTotal > 0 ? Math.round((tonTotal / monthTotal) * 100) : 0;
+
+    $('#kpi-month-label').text(activeMY === 'ALL' ? 'Tất cả' : `Tháng ${activeMY}`);
+    $('#kpi-month-total').text(formatCurrency(monthTotal));
+    $('#kpi-ngan-total').text(formatCurrency(nganTotal));
+    $('#kpi-ngan-percent').text(`${nganPercent}% tổng chi tháng`);
+    $('#kpi-ton-total').text(formatCurrency(tonTotal));
+    $('#kpi-ton-percent').text(`${tonPercent}% tổng chi tháng`);
+    $('#kpi-month-count').text(`${monthCount} khoản`);
+    $('#kpi-today-total').text(`Chi hôm nay: ${formatCurrency(todayTotal)}`);
+  }
+
+  function renderTable() {
+    const sorted = getSortedItems();
+    const totalCount = sorted.length;
+
+    $('#table-count-badge').text(`${totalCount} dòng`);
+
+    // Pagination slice
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    if (currentPage > totalPages) currentPage = totalPages;
+
+    const startIdx = (currentPage - 1) * pageSize;
+    const paginated = sorted.slice(startIdx, startIdx + pageSize);
+
+    const $tbody = $('#expenses-tbody');
+    $tbody.empty();
+
+    if (paginated.length === 0) {
+      $tbody.html(`
+        <tr>
+          <td colspan="5" class="py-8 text-center text-slate-400 text-xs font-medium">
+            Chưa có dữ liệu chi tiêu nào phù hợp
+          </td>
+        </tr>
+      `);
+      $('#expenses-tfoot').addClass('hidden');
+    } else {
+      paginated.forEach((item) => {
+        const isEditing = editingRowId === item._id;
+
+        if (isEditing) {
+          const rowHtml = `
+            <tr class="bg-emerald-50/70 border-b border-emerald-200">
+              <td class="py-2 px-2">
+                <input type="date" id="edit-date-${item._id}" value="${formatYYYYMMDD(item.date)}" class="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white font-medium" />
+              </td>
+              <td class="py-2 px-2">
+                <select id="edit-spender-${item._id}" class="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white font-bold">
+                  <option value="Ngăn ❤️❤️❤️" ${item.spender.includes('Ngăn') ? 'selected' : ''}>Ngăn ❤️❤️❤️</option>
+                  <option value="Tòn 🐷🐷🐷" ${item.spender.includes('Tòn') ? 'selected' : ''}>Tòn 🐷🐷🐷</option>
+                </select>
+              </td>
+              <td class="py-2 px-2">
+                <input type="text" id="edit-expense-${item._id}" value="${escapeHtml(item.expense)}" class="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white font-medium" />
+              </td>
+              <td class="py-2 px-2">
+                <input type="number" step="any" id="edit-amount-${item._id}" value="${item.amount || 0}" class="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white text-right font-bold text-emerald-700" />
+              </td>
+              <td class="py-2 px-2 text-center">
+                <div class="flex items-center justify-center gap-1">
+                  <button type="button" data-id="${item._id}" class="btn-inline-save p-1.5 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-colors cursor-pointer" title="Lưu">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                  </button>
+                  <button type="button" class="btn-inline-cancel p-1.5 bg-slate-200 text-slate-700 rounded hover:bg-slate-300 transition-colors cursor-pointer" title="Hủy">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `;
+          $tbody.append(rowHtml);
+        } else {
+          const isNgan = String(item.spender || '').includes('Ngăn');
+          const rowHtml = `
+            <tr class="hover:bg-slate-50/80 transition-colors">
+              <td class="py-2.5 px-3 font-medium text-slate-600 text-xs">
+                <i class="fa-regular fa-calendar text-slate-400 mr-1"></i>
+                <span>${escapeHtml(item.date)}</span>
+              </td>
+              <td class="py-2.5 px-3">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                  isNgan ? 'bg-pink-100 text-pink-800 border-pink-200' : 'bg-amber-100 text-amber-900 border-amber-200'
+                }">
+                  ${escapeHtml(item.spender || 'Ngăn ❤️❤️❤️')}
+                </span>
+              </td>
+              <td class="py-2.5 px-3 font-semibold text-slate-800">
+                ${escapeHtml(item.expense)}
+              </td>
+              <td class="py-2.5 px-3 text-right font-bold text-emerald-700 text-sm">
+                ${formatCurrency(item.amount || 0)}
+              </td>
+              <td class="py-2.5 px-3 text-center">
+                <div class="flex items-center justify-center gap-1">
+                  <button type="button" data-id="${item._id}" class="btn-inline-edit p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer" title="Sửa">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                  </button>
+                  <button type="button" data-id="${item._id}" class="btn-inline-delete p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" title="Xoá">
+                    <i class="fa-solid fa-trash-can text-rose-500"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `;
+          $tbody.append(rowHtml);
+        }
+      });
+
+      // Render Tfoot Total
+      const totalListAmount = sorted.reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
+      $('#tfoot-total-amount').text(formatCurrency(totalListAmount));
+      $('#expenses-tfoot').removeClass('hidden');
+    }
+
+    // Pagination info
+    $('#pagination-page-info').text(`Trang ${currentPage} / ${totalPages}`);
+    $('#btn-prev-page').prop('disabled', currentPage <= 1);
+    $('#btn-next-page').prop('disabled', currentPage >= totalPages);
+  }
+
+  // --- INLINE EDIT & DELETE ---
+  function saveInlineEdit(id) {
+    const dateVal = $(`#edit-date-${id}`).val();
+    const spenderVal = $(`#edit-spender-${id}`).val();
+    const expenseVal = $.trim($(`#edit-expense-${id}`).val());
+    const rawAmt = parseFloat($(`#edit-amount-${id}`).val()) || 0;
+    const amtVal = parseAmountInK(rawAmt);
+
+    if (!expenseVal) {
+      showToast('Tên chi phí không được để trống!', 'error');
+      return;
+    }
+
+    const updateData = {
+      date: formatDateDDMMYYYY(dateVal),
+      spender: spenderVal,
+      expense: expenseVal,
+      amount: amtVal,
+    };
+
+    // Attempt Express PUT
+    $.ajax({
+      url: `/api/expenses/${id}`,
+      method: 'PUT',
+      contentType: 'application/json',
+      data: JSON.stringify(updateData),
+      timeout: 5000,
+      success: function (res) {
+        editingRowId = null;
+        showToast('Đã cập nhật chi tiêu!', 'success');
+        loadExpenses();
+      },
+      error: function () {
+        // Fallback direct RestDB or local
+        $.ajax({
+          url: `${RESTDB_URL}/${id}`,
+          method: 'PUT',
+          headers: {
+            'x-apikey': RESTDB_API_KEY,
+            'Content-Type': 'application/json',
+          },
+          data: JSON.stringify(updateData),
+          timeout: 5000,
+          success: function () {
+            editingRowId = null;
+            showToast('Đã cập nhật chi tiêu trên RestDB!', 'success');
+            loadExpenses();
+          },
+          error: function () {
+            // Local update
+            expensesList = expensesList.map((item) => (item._id === id ? { ...item, ...updateData } : item));
+            saveLocalExpenses(expensesList);
+            editingRowId = null;
+            showToast('Đã cập nhật chi tiêu trong bộ nhớ!', 'success');
+            renderAll();
+          },
+        });
+      },
+    });
+  }
+
+  function deleteExpenseItem(id) {
+    if (!window.confirm('Bạn có chắc chắn muốn xoá khoản chi tiêu này không?')) return;
+
+    const targetItem = expensesList.find((i) => i._id === id);
+    const targetDocId = targetItem ? targetItem.doc_id : id;
+
+    $.ajax({
+      url: `/api/expenses/${targetDocId}`,
+      method: 'DELETE',
+      timeout: 5000,
+      success: function () {
+        showToast('Đã xoá khoản chi tiêu!', 'success');
+        loadExpenses();
+      },
+      error: function () {
+        $.ajax({
+          url: `${RESTDB_URL}/${targetDocId}`,
+          method: 'DELETE',
+          headers: {
+            'x-apikey': RESTDB_API_KEY,
+          },
+          timeout: 5000,
+          success: function () {
+            showToast('Đã xoá trên RestDB!', 'success');
+            loadExpenses();
+          },
+          error: function () {
+            rawDocs = rawDocs.filter((d) => d._id !== targetDocId && d._id !== id);
+            saveLocalExpenses(rawDocs);
+            expensesList = normalizeExpensesData(rawDocs);
+            showToast('Đã xoá khỏi bộ nhớ máy!', 'success');
+            renderAll();
+          },
+        });
+      },
+    });
+  }
 });
