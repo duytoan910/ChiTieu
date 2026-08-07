@@ -1,8 +1,3 @@
-import './index.css';
-import $ from 'jquery';
-
-window.$ = window.jQuery = $;
-
 /**
  * Sổ Chi Tiêu Ngăn ❤️ & Tòn 🐷
  * Tech Stack: Pure HTML5, jQuery 3.7, Tailwind CSS
