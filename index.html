@@ -48,149 +48,136 @@
     }
   </style>
 </head>
-<body class="min-h-screen pb-16 bg-slate-50 text-slate-900 antialiased">
+<body class="min-h-screen pb-16 bg-slate-50 text-slate-900 antialiased overflow-x-hidden">
 
   <!-- Toast Container -->
-  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-xs sm:max-w-sm w-full pointer-events-none px-2 sm:px-0"></div>
 
   <!-- Header -->
   <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 via-rose-500 to-amber-500 text-white flex items-center justify-center font-extrabold text-xl shadow-xs">
+    <div class="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+      <div class="flex items-center gap-2 sm:gap-3">
+        <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-pink-500 via-rose-500 to-amber-500 text-white flex items-center justify-center font-extrabold text-base sm:text-xl shadow-xs shrink-0">
           ❤️
         </div>
         <div>
-          <h1 className="text-base sm:text-lg font-extrabold text-slate-900 leading-tight flex items-center gap-2">
+          <h1 class="text-sm sm:text-lg font-extrabold text-slate-900 leading-tight">
             <span>Sổ Chi Tiêu Ngăn ❤️ & Tòn 🐷</span>
           </h1>
-          <p class="text-xs text-slate-500">HTML & jQuery • Đồng bộ & Lưu dữ liệu an toàn</p>
+          <p class="text-[10px] sm:text-xs text-slate-500">HTML & jQuery • Đồng bộ & Lưu dữ liệu an toàn</p>
         </div>
       </div>
 
       <!-- RestDB Status -->
-      <div id="restdb-status-badge" class="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-full text-emerald-800 text-xs font-bold shadow-2xs">
-        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+      <div id="restdb-status-badge" class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-emerald-50 border border-emerald-200 rounded-full text-emerald-800 text-[10px] sm:text-xs font-bold shadow-2xs">
+        <span class="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
         <i class="fa-solid fa-cloud-arrow-up text-emerald-600"></i>
         <span id="restdb-status-text">Đã kết nối Hệ thống</span>
       </div>
     </div>
   </header>
 
-  <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-5 space-y-5">
+  <main class="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 mt-3 sm:mt-5 space-y-3 sm:space-y-5">
 
-    <!-- Top Filter & Control Bar -->
-    <div class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
-        <i class="fa-solid fa-shield-halved text-emerald-600"></i>
-        <span>Bảo mật & Đồng bộ dữ liệu tự động</span>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-2">
-        <!-- Month Selector -->
-        <div class="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
-          <i class="fa-regular fa-calendar-days text-slate-500 text-xs"></i>
-          <label for="select-month-filter" class="text-xs font-bold text-slate-600">Tháng:</label>
-          <select id="select-month-filter" class="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer">
-            <option value="CURRENT">Tháng này</option>
-            <option value="ALL">Tất cả các tháng</option>
-          </select>
-        </div>
-
-        <button id="btn-reload-data" type="button" class="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 active:scale-95 rounded-xl border border-slate-200 transition-all flex items-center gap-1.5 cursor-pointer">
-          <i class="fa-solid fa-rotate text-emerald-600"></i>
-          <span>Tải lại dữ liệu</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- KPI Statistics Cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-      <div class="bg-gradient-to-br from-slate-900 to-slate-800 p-4 rounded-2xl text-white shadow-xs">
-        <div class="text-xs font-medium text-slate-300 flex items-center justify-between">
-          <span>Tổng chi tháng này</span>
-          <span id="kpi-month-label" class="text-xs text-emerald-400 font-bold">Tháng này</span>
-        </div>
-        <div id="kpi-month-total" class="text-xl sm:text-2xl font-black text-white mt-1.5">0 ₫</div>
-        <div class="text-[11px] text-slate-400 mt-1">Cả Ngăn & Tòn chi cộng lại</div>
-      </div>
-
-      <div class="bg-pink-50/80 border border-pink-200 p-4 rounded-2xl shadow-xs">
-        <div class="text-xs font-bold text-pink-700">❤️ Ngăn ❤️❤️❤️ chi</div>
-        <div id="kpi-ngan-total" class="text-xl sm:text-2xl font-black text-pink-800 mt-1.5">0 ₫</div>
-        <div id="kpi-ngan-percent" class="text-[11px] text-pink-600 font-medium mt-1">0% tổng chi tháng</div>
-      </div>
-
-      <div class="bg-amber-50/80 border border-amber-200 p-4 rounded-2xl shadow-xs">
-        <div class="text-xs font-bold text-amber-800">🐷 Tòn 🐷🐷🐷 chi</div>
-        <div id="kpi-ton-total" class="text-xl sm:text-2xl font-black text-amber-900 mt-1.5">0 ₫</div>
-        <div id="kpi-ton-percent" class="text-[11px] text-amber-700 font-medium mt-1">0% tổng chi tháng</div>
-      </div>
-
-      <div class="bg-white border border-slate-200 p-4 rounded-2xl shadow-xs">
-        <div class="text-xs font-bold text-slate-500">Số khoản chi trong tháng</div>
-        <div id="kpi-month-count" class="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1.5">0 khoản</div>
-        <div id="kpi-today-total" class="text-[11px] text-emerald-600 font-medium mt-1">Chi hôm nay: 0 ₫</div>
-      </div>
-    </div>
-
-    <!-- Expense Entry Form Card -->
-    <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-        <h2 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
-          <span class="w-2.5 h-5 bg-emerald-600 rounded-full"></span>
+    <!-- 1. Expense Entry Form Card (Moved to top) -->
+    <div class="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3 sm:space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5 sm:pb-3">
+        <h2 class="text-sm sm:text-base font-extrabold text-slate-900 flex items-center gap-2">
+          <span class="w-2.5 h-4 sm:h-5 bg-emerald-600 rounded-full"></span>
           Nhập Chi Tiêu Mới
         </h2>
-        <span class="text-xs text-slate-500 italic">* Tự động tạo dòng tiếp theo khi bạn nhập chi phí</span>
+        <span class="text-[11px] sm:text-xs text-slate-500 italic">* Tự động tạo dòng tiếp theo khi bạn nhập chi phí</span>
       </div>
 
       <!-- Controls: Date & Spender -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 sm:gap-4 bg-slate-50 p-2.5 sm:p-3.5 rounded-xl border border-slate-200/80">
         <!-- Date -->
-        <div class="space-y-1.5">
-          <label for="input-date" class="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+        <div class="space-y-1">
+          <label for="input-date" class="block text-[11px] sm:text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
             <i class="fa-regular fa-calendar text-slate-500"></i> Ngày chi tiêu
           </label>
-          <input type="date" id="input-date" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-medium text-sm text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none shadow-2xs" />
+          <input type="date" id="input-date" class="w-full px-2.5 py-1.5 sm:py-2 bg-white border border-slate-300 rounded-xl font-medium text-xs sm:text-sm text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none shadow-2xs" />
         </div>
 
         <!-- Spender radio -->
-        <div class="md:col-span-2 space-y-1.5">
-          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+        <div class="md:col-span-2 space-y-1">
+          <label class="block text-[11px] sm:text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
             <i class="fa-regular fa-user text-slate-500"></i> Tên người chi tiêu
           </label>
-          <div class="grid grid-cols-2 gap-3">
-            <button type="button" id="btn-spender-ngan" data-spender="Ngăn ❤️❤️❤️" class="btn-spender-option flex items-center justify-center gap-2 py-2.5 px-3 border-2 rounded-xl font-bold text-sm cursor-pointer transition-all bg-pink-50 border-pink-500 text-pink-700 shadow-xs">
-              <span class="text-base">❤️</span>
+          <div class="grid grid-cols-2 gap-2 sm:gap-3">
+            <button type="button" id="btn-spender-ngan" data-spender="Ngăn ❤️❤️❤️" class="btn-spender-option flex items-center justify-center gap-1.5 sm:gap-2 py-1.5 sm:py-2.5 px-2 sm:px-3 border-2 rounded-xl font-bold text-xs sm:text-sm cursor-pointer transition-all bg-pink-50 border-pink-500 text-pink-700 shadow-xs">
+              <span class="text-sm sm:text-base">❤️</span>
               <span>Ngăn ❤️❤️❤️</span>
             </button>
-            <button type="button" id="btn-spender-ton" data-spender="Tòn 🐷🐷🐷" class="btn-spender-option flex items-center justify-center gap-2 py-2.5 px-3 border-2 rounded-xl font-bold text-sm cursor-pointer transition-all bg-white border-slate-200 text-slate-600 hover:bg-slate-50">
-              <span class="text-base">🐷</span>
+            <button type="button" id="btn-spender-ton" data-spender="Tòn 🐷🐷🐷" class="btn-spender-option flex items-center justify-center gap-1.5 sm:gap-2 py-1.5 sm:py-2.5 px-2 sm:px-3 border-2 rounded-xl font-bold text-xs sm:text-sm cursor-pointer transition-all bg-white border-slate-200 text-slate-600 hover:bg-slate-50">
+              <span class="text-sm sm:text-base">🐷</span>
               <span>Tòn 🐷🐷🐷</span>
             </button>
           </div>
         </div>
       </div>
 
-      <!-- Multi-Row Entry Table -->
-      <div class="space-y-2">
-        <div class="flex items-center justify-between flex-wrap gap-1">
-          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-            📝 Chi tiết các khoản chi
+      <!-- Common Expenses Suggestions -->
+      <div class="flex flex-wrap items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs bg-slate-50 p-2 sm:p-2.5 rounded-xl border border-slate-200">
+        <span class="font-bold text-slate-600 flex items-center gap-1 mr-0.5 sm:mr-1">
+          <i class="fa-solid fa-bolt text-amber-500"></i> Khoản chi:
+        </span>
+        <button type="button" class="btn-quick-expense px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white hover:bg-emerald-50 hover:text-emerald-800 active:scale-95 text-slate-700 font-semibold rounded-lg border border-slate-200 transition-all cursor-pointer shadow-2xs" data-expense="Ăn sáng">
+          🥐 Ăn sáng
+        </button>
+        <button type="button" class="btn-quick-expense px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white hover:bg-emerald-50 hover:text-emerald-800 active:scale-95 text-slate-700 font-semibold rounded-lg border border-slate-200 transition-all cursor-pointer shadow-2xs" data-expense="Ăn trưa">
+          🍱 Ăn trưa
+        </button>
+        <button type="button" class="btn-quick-expense px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white hover:bg-emerald-50 hover:text-emerald-800 active:scale-95 text-slate-700 font-semibold rounded-lg border border-slate-200 transition-all cursor-pointer shadow-2xs" data-expense="Ăn chiều">
+          🍲 Ăn chiều
+        </button>
+        <button type="button" class="btn-quick-expense px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white hover:bg-emerald-50 hover:text-emerald-800 active:scale-95 text-slate-700 font-semibold rounded-lg border border-slate-200 transition-all cursor-pointer shadow-2xs" data-expense="Xăng">
+          ⛽ Xăng
+        </button>
+        <button type="button" class="btn-quick-expense px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white hover:bg-emerald-50 hover:text-emerald-800 active:scale-95 text-slate-700 font-semibold rounded-lg border border-slate-200 transition-all cursor-pointer shadow-2xs" data-expense="Trà sữa">
+          🧋 Trà sữa
+        </button>
+        <button type="button" class="btn-quick-expense px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white hover:bg-emerald-50 hover:text-emerald-800 active:scale-95 text-slate-700 font-semibold rounded-lg border border-slate-200 transition-all cursor-pointer shadow-2xs" data-expense="Cà phê">
+          ☕ Cà phê
+        </button>
+      </div>
+
+      <!-- Datalist for input autocomplete -->
+      <datalist id="common-expenses-list">
+        <option value="Ăn sáng"></option>
+        <option value="Ăn trưa"></option>
+        <option value="Ăn chiều"></option>
+        <option value="Ăn tối"></option>
+        <option value="Ăn uống"></option>
+        <option value="Xăng"></option>
+        <option value="Trà sữa"></option>
+        <option value="Cà phê"></option>
+        <option value="Đi chợ / Siêu thị"></option>
+        <option value="Mua sắm"></option>
+        <option value="Tiền điện / nước"></option>
+      </datalist>
+
+      <!-- Multi-Row Entry Table Card (Highlighted background) -->
+      <div class="bg-gradient-to-br from-emerald-50/80 via-teal-50/40 to-slate-50/80 p-2.5 sm:p-4 rounded-2xl border-2 border-emerald-300/80 shadow-xs space-y-2.5 sm:space-y-3">
+        <div class="flex items-center justify-between flex-wrap gap-1.5 sm:gap-2">
+          <label class="block text-[11px] sm:text-xs font-extrabold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5 bg-white px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl border border-emerald-200 shadow-2xs">
+            <span class="text-sm sm:text-base">📝</span>
+            <span>Chi tiết các khoản chi</span>
           </label>
-          <span class="text-xs text-emerald-800 font-semibold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-            💡 Đơn vị nghìn VNĐ (Ví dụ: nhập 100 ➔ 100.000 ₫)
+          <span class="text-[10px] sm:text-xs text-emerald-800 font-bold bg-white px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-xl border border-emerald-200 shadow-2xs flex items-center gap-1">
+            <i class="fa-solid fa-circle-info text-emerald-600"></i>
+            <span>Đơn vị nghìn VNĐ (Ví dụ: 100 ➔ 100.000 ₫)</span>
           </span>
         </div>
 
-        <div class="overflow-x-auto border border-slate-200 rounded-xl">
-          <table class="w-full text-left text-sm border-collapse min-w-[500px]">
+        <div class="border border-slate-200/90 rounded-xl shadow-2xs overflow-hidden">
+          <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-0">
             <thead>
-              <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 text-xs">
-                <th class="py-2.5 px-3 w-12 text-center">STT</th>
-                <th class="py-2.5 px-3">Tên chi phí / Nội dung</th>
-                <th class="py-2.5 px-3 w-56 text-right">Số tiền (Đơn vị: nghìn ₫)</th>
-                <th class="py-2.5 px-3 w-16 text-center">Xoá</th>
+              <tr class="bg-emerald-100/70 text-emerald-950 font-extrabold border-b border-emerald-200 text-[10px] sm:text-xs">
+                <th class="py-1.5 sm:py-2.5 px-1 sm:px-3 w-7 sm:w-12 text-center">STT</th>
+                <th class="py-1.5 sm:py-2.5 px-1.5 sm:px-3">Tên chi phí / Nội dung</th>
+                <th class="py-1.5 sm:py-2.5 px-1.5 sm:px-3 w-32 sm:w-56 text-right">Số tiền (nghìn ₫)</th>
+                <th class="py-1.5 sm:py-2.5 px-1 sm:px-3 w-9 sm:w-16 text-center">Xoá</th>
               </tr>
             </thead>
             <tbody id="expense-rows-body" class="divide-y divide-slate-200 bg-white">
@@ -200,95 +187,191 @@
         </div>
 
         <!-- Actions & Presets -->
-        <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
-          <div class="flex flex-wrap items-center gap-2">
-            <button type="button" id="btn-add-row" class="px-3.5 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs">
-              <i class="fa-solid fa-plus text-emerald-600"></i> Thêm dòng chi phí
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-1 sm:pt-2">
+          <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <button type="button" id="btn-add-row" class="px-2.5 py-1 sm:py-2 text-[11px] sm:text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors flex items-center gap-1 cursor-pointer shadow-2xs">
+              <i class="fa-solid fa-plus text-emerald-600"></i> Thêm dòng
             </button>
 
             <!-- Quick Presets -->
-            <div class="flex flex-wrap items-center gap-1 pl-1">
-              <span class="text-xs text-slate-500 font-semibold hidden sm:inline">Cộng nhanh:</span>
-              <button type="button" class="btn-preset-amount px-2.5 py-1 text-xs font-bold bg-slate-100 hover:bg-emerald-100 hover:text-emerald-800 active:scale-95 text-slate-700 rounded-md border border-slate-200 transition-all cursor-pointer" data-val="10">+10k</button>
-              <button type="button" class="btn-preset-amount px-2.5 py-1 text-xs font-bold bg-slate-100 hover:bg-emerald-100 hover:text-emerald-800 active:scale-95 text-slate-700 rounded-md border border-slate-200 transition-all cursor-pointer" data-val="50">+50k</button>
-              <button type="button" class="btn-preset-amount px-2.5 py-1 text-xs font-bold bg-slate-100 hover:bg-emerald-100 hover:text-emerald-800 active:scale-95 text-slate-700 rounded-md border border-slate-200 transition-all cursor-pointer" data-val="100">+100k</button>
-              <button type="button" class="btn-preset-amount px-2.5 py-1 text-xs font-bold bg-slate-100 hover:bg-emerald-100 hover:text-emerald-800 active:scale-95 text-slate-700 rounded-md border border-slate-200 transition-all cursor-pointer" data-val="200">+200k</button>
-              <button type="button" class="btn-preset-amount px-2.5 py-1 text-xs font-bold bg-slate-100 hover:bg-emerald-100 hover:text-emerald-800 active:scale-95 text-slate-700 rounded-md border border-slate-200 transition-all cursor-pointer" data-val="500">+500k</button>
+            <div class="flex flex-wrap items-center gap-1 pl-0.5">
+              <span class="text-[11px] text-slate-500 font-semibold hidden sm:inline">Cộng nhanh:</span>
+              <button type="button" class="btn-preset-amount px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-bold bg-slate-100 hover:bg-emerald-100 hover:text-emerald-800 active:scale-95 text-slate-700 rounded-md border border-slate-200 transition-all cursor-pointer" data-val="10">+10k</button>
+              <button type="button" class="btn-preset-amount px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-bold bg-slate-100 hover:bg-emerald-100 hover:text-emerald-800 active:scale-95 text-slate-700 rounded-md border border-slate-200 transition-all cursor-pointer" data-val="50">+50k</button>
+              <button type="button" class="btn-preset-amount px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-bold bg-slate-100 hover:bg-emerald-100 hover:text-emerald-800 active:scale-95 text-slate-700 rounded-md border border-slate-200 transition-all cursor-pointer" data-val="100">+100k</button>
+              <button type="button" class="btn-preset-amount px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-bold bg-slate-100 hover:bg-emerald-100 hover:text-emerald-800 active:scale-95 text-slate-700 rounded-md border border-slate-200 transition-all cursor-pointer" data-val="200">+200k</button>
+              <button type="button" class="btn-preset-amount px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-bold bg-slate-100 hover:bg-emerald-100 hover:text-emerald-800 active:scale-95 text-slate-700 rounded-md border border-slate-200 transition-all cursor-pointer" data-val="500">+500k</button>
             </div>
           </div>
 
           <!-- Batch Total -->
           <div class="text-right">
-            <span class="text-xs text-slate-500 font-medium">Tổng đợt nhập này:</span>
-            <span id="batch-total-display" class="text-base font-black text-emerald-700 ml-1">0 ₫</span>
+            <span class="text-[11px] sm:text-xs text-slate-500 font-medium">Tổng đợt nhập:</span>
+            <span id="batch-total-display" class="text-sm sm:text-base font-black text-emerald-700 ml-1">0 ₫</span>
           </div>
         </div>
       </div>
 
       <!-- Form Submit & Reset -->
-      <div class="flex flex-col sm:flex-row items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
-        <button type="button" id="btn-reset-form" class="w-full sm:w-auto px-4 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors border border-slate-200 cursor-pointer">
+      <div class="flex flex-col sm:flex-row items-center justify-end gap-2 sm:gap-2.5 pt-2 sm:pt-3 border-t border-slate-100">
+        <button type="button" id="btn-reset-form" class="w-full sm:w-auto px-3.5 py-1.5 sm:py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors border border-slate-200 cursor-pointer">
           Làm mới form
         </button>
 
-        <button type="button" id="btn-submit-expenses" class="w-full sm:w-auto px-6 py-3 text-sm font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-98 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer">
+        <button type="button" id="btn-submit-expenses" class="w-full sm:w-auto px-5 py-2 sm:py-3 text-xs sm:text-sm font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-98 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer">
           <i class="fa-solid fa-paper-plane"></i> Lưu Chi Tiêu
         </button>
       </div>
     </div>
 
-    <!-- Data List Table Card -->
-    <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-        <div>
-          <h3 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
-            <i class="fa-solid fa-receipt text-emerald-600"></i>
-            <span>Danh Sách Chi Tiêu</span>
-            <span id="table-count-badge" class="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold">0 dòng</span>
-          </h3>
-          <p class="text-xs text-slate-500">Tìm kiếm, sắp xếp và chỉnh sửa trực tiếp thông tin từng dòng chi tiêu</p>
+    <!-- 2. Statistics / Summary Section (Placed in middle) -->
+    <div id="statistics-section" class="space-y-4">
+      <!-- Full-Width Horizontal "Tổng chi" Card -->
+      <div id="main-summary-card" class="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-2xl text-white shadow-md border border-slate-800 transition-all overflow-hidden p-4 sm:p-5">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+          
+          <!-- Cột 1: Thông tin tổng chi & Khoản chi hôm nay -->
+          <div class="space-y-2.5">
+            <!-- Hàng 1: Tổng chi tháng -->
+            <div class="flex items-baseline gap-2.5 flex-wrap">
+              <span class="text-xs font-bold text-slate-300 uppercase tracking-wider">Tổng chi:</span>
+              <div id="kpi-month-total" class="text-2xl sm:text-3xl font-black text-white tracking-tight">0 ₫</div>
+              <span id="kpi-month-label" class="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-bold text-xs border border-slate-700/80 shadow-2xs">
+                Tháng này
+              </span>
+              <span class="text-xs text-slate-400 font-medium hidden lg:inline">(Cả Ngăn & Tòn chi cộng lại)</span>
+            </div>
+
+            <!-- Hàng 2 (Phía dưới): Khoản chi hôm nay & Số khoản chi -->
+            <div class="flex items-center gap-2.5 flex-wrap text-xs pt-0.5">
+              <div class="inline-flex items-center gap-1.5 bg-emerald-950/90 px-3 py-1.5 rounded-xl border border-emerald-800/80 text-emerald-300 font-extrabold shadow-2xs">
+                <i class="fa-solid fa-calendar-day text-emerald-400 text-xs"></i>
+                <span id="kpi-today-total">Chi hôm nay: 0 ₫</span>
+              </div>
+
+              <div class="inline-flex items-center gap-1.5 bg-slate-950/80 px-3 py-1.5 rounded-xl border border-slate-700/70 text-slate-300 font-bold shadow-2xs">
+                <i class="fa-solid fa-receipt text-slate-400 text-xs"></i>
+                <span>Tổng cộng: <strong id="kpi-month-count" class="text-white font-extrabold">0 khoản</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cột 2: Chọn tháng & Tải lại dữ liệu -->
+          <div class="flex items-center md:justify-end gap-2 flex-wrap pt-2 md:pt-0 border-t border-slate-800/80 md:border-t-0">
+            <div class="flex items-center gap-2 bg-slate-800/90 p-1.5 sm:p-2 rounded-2xl border border-slate-700/80 shadow-2xs w-full sm:w-auto">
+              <div class="flex items-center gap-2 bg-slate-900/90 px-3 py-1.5 sm:py-2 rounded-xl border border-slate-700 flex-1 sm:flex-initial">
+                <i class="fa-regular fa-calendar-days text-emerald-400 text-sm"></i>
+                <label for="select-month-filter" class="text-xs font-bold text-slate-300 whitespace-nowrap">Tháng:</label>
+                <select id="select-month-filter" class="bg-transparent text-xs sm:text-sm font-bold text-emerald-400 focus:outline-none cursor-pointer w-full">
+                  <option value="CURRENT" class="bg-slate-900 text-white">Tháng này</option>
+                  <option value="ALL" class="bg-slate-900 text-white">Tất cả các tháng</option>
+                </select>
+              </div>
+
+              <button id="btn-reload-data" type="button" class="px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-slate-200 bg-slate-700 hover:bg-slate-600 active:scale-95 rounded-xl border border-slate-600 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs shrink-0" title="Tải lại dữ liệu">
+                <i class="fa-solid fa-rotate text-emerald-400"></i>
+                <span>Tải lại</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Equal Width Cards for Ngăn & Tòn -->
+      <div class="grid grid-cols-2 gap-2 sm:gap-4">
+        <!-- Ngăn Card -->
+        <div class="bg-pink-50/90 border border-pink-200/90 p-2.5 sm:p-4 rounded-2xl shadow-2xs flex flex-col justify-between space-y-1 sm:space-y-2">
+          <div class="flex items-center justify-between gap-1">
+            <div class="text-[11px] sm:text-xs font-extrabold text-pink-700 flex items-center gap-1">
+              <span class="text-xs sm:text-base">❤️</span>
+              <span class="truncate">Ngăn ❤️</span>
+            </div>
+            <span class="px-1.5 py-0.5 bg-pink-100 text-pink-800 rounded-full text-[9px] sm:text-[10px] font-bold border border-pink-200 hidden xs:inline">
+              Thành viên
+            </span>
+          </div>
+          <div id="kpi-ngan-total" class="text-base sm:text-3xl font-black text-pink-800">0 ₫</div>
+          <div id="kpi-ngan-percent" class="text-[10px] sm:text-xs text-pink-600 font-bold">0% tổng chi</div>
         </div>
 
-        <!-- Search Input -->
-        <div class="relative w-full sm:w-64">
-          <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-          <input type="text" id="search-input" placeholder="Tìm nội dung, người chi..." class="w-full pl-9 pr-8 py-1.5 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white focus:outline-none" />
-          <button id="btn-clear-search" class="hidden absolute right-2.5 top-2 text-slate-400 hover:text-slate-600">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
+        <!-- Tòn Card -->
+        <div class="bg-amber-50/90 border border-amber-200/90 p-2.5 sm:p-4 rounded-2xl shadow-2xs flex flex-col justify-between space-y-1 sm:space-y-2">
+          <div class="flex items-center justify-between gap-1">
+            <div class="text-[11px] sm:text-xs font-extrabold text-amber-900 flex items-center gap-1">
+              <span class="text-xs sm:text-base">🐷</span>
+              <span class="truncate">Tòn 🐷</span>
+            </div>
+            <span class="px-1.5 py-0.5 bg-amber-100 text-amber-900 rounded-full text-[9px] sm:text-[10px] font-bold border border-amber-200 hidden xs:inline">
+              Thành viên
+            </span>
+          </div>
+          <div id="kpi-ton-total" class="text-base sm:text-3xl font-black text-amber-900">0 ₫</div>
+          <div id="kpi-ton-percent" class="text-[10px] sm:text-xs text-amber-700 font-bold">0% tổng chi</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data List Table Card -->
+    <div class="bg-white p-2.5 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-2.5 sm:space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5 sm:pb-3">
+        <div>
+          <h3 class="text-sm sm:text-base font-extrabold text-slate-900 flex items-center gap-1.5">
+            <i class="fa-solid fa-receipt text-emerald-600"></i>
+            <span>Danh Sách Chi Tiêu Theo Ngày</span>
+            <span id="table-count-badge" class="text-[10px] sm:text-xs bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-full font-bold">0 ngày</span>
+          </h3>
+          <p class="text-[10px] sm:text-xs text-slate-500">Nhấn vào từng ngày để xem bảng chi tiết chi tiêu của Ngăn & Tòn.</p>
+        </div>
+
+        <div class="flex items-center gap-2 flex-wrap">
+          <!-- Search Input -->
+          <div class="relative w-full sm:w-64">
+            <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2.5 text-slate-400 text-xs"></i>
+            <input type="text" id="search-input" placeholder="Tìm nội dung, người chi..." class="w-full pl-8 pr-8 py-1.5 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white focus:outline-none" />
+            <button id="btn-clear-search" class="hidden absolute right-2.5 top-2 text-slate-400 hover:text-slate-600">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
         </div>
       </div>
 
       <!-- Main Data Table -->
-      <div class="overflow-x-auto border border-slate-200 rounded-xl">
-        <table class="w-full text-left text-sm border-collapse min-w-[650px]">
+      <div class="border border-slate-200 rounded-xl overflow-hidden">
+        <table class="w-full text-left border-collapse min-w-0 table-fixed sm:table-auto">
           <thead>
-            <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 text-xs select-none">
-              <th data-sort="date" class="th-sortable py-3 px-3 cursor-pointer hover:bg-slate-200 transition-colors w-36">
-                <div class="flex items-center gap-1">
-                  <span>Ngày tháng</span>
-                  <i class="fa-solid fa-sort text-slate-400 text-[10px]"></i>
+            <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 text-[10px] sm:text-xs select-none">
+              <th data-sort="date" class="th-sortable py-2 px-1 sm:px-3 cursor-pointer hover:bg-slate-200 transition-colors w-[18%] sm:w-auto">
+                <div class="flex items-center gap-0.5 sm:gap-1">
+                  <span>Ngày</span>
+                  <i class="fa-solid fa-sort text-slate-400 text-[9px] sm:text-[10px]"></i>
                 </div>
               </th>
-              <th data-sort="spender" class="th-sortable py-3 px-3 cursor-pointer hover:bg-slate-200 transition-colors w-40">
-                <div class="flex items-center gap-1">
-                  <span>Người chi</span>
-                  <i class="fa-solid fa-sort text-slate-400 text-[10px]"></i>
+              <th class="py-2 px-0.5 sm:px-2 text-center w-[9%] sm:w-16">
+                <span>Món</span>
+              </th>
+              <th data-spender="NGAN" class="btn-filter-spender py-2 px-0.5 sm:px-3 text-right text-pink-700 bg-pink-50/70 hover:bg-pink-100 transition-colors cursor-pointer border-x border-pink-100 w-[22%] sm:w-auto" title="Bấm để bật/tắt lọc chi tiêu của Ngăn">
+                <div class="flex items-center justify-end gap-0.5 sm:gap-1">
+                  <i class="fa-solid fa-filter text-[9px] opacity-60 hidden sm:inline"></i>
+                  <span>Ngăn ❤️</span>
                 </div>
               </th>
-              <th data-sort="expense" class="th-sortable py-3 px-3 cursor-pointer hover:bg-slate-200 transition-colors">
-                <div class="flex items-center gap-1">
-                  <span>Tên chi phí / Nội dung</span>
-                  <i class="fa-solid fa-sort text-slate-400 text-[10px]"></i>
+              <th data-spender="TON" class="btn-filter-spender py-2 px-0.5 sm:px-3 text-right text-amber-900 bg-amber-50/70 hover:bg-amber-100 transition-colors cursor-pointer border-x border-amber-100 w-[22%] sm:w-auto" title="Bấm để bật/tắt lọc chi tiêu của Tòn">
+                <div class="flex items-center justify-end gap-0.5 sm:gap-1">
+                  <i class="fa-solid fa-filter text-[9px] opacity-60 hidden sm:inline"></i>
+                  <span>Tòn 🐷</span>
                 </div>
               </th>
-              <th data-sort="amount" class="th-sortable py-3 px-3 cursor-pointer hover:bg-slate-200 transition-colors text-right w-44">
-                <div class="flex items-center justify-end gap-1">
-                  <span>Số tiền (VNĐ)</span>
-                  <i class="fa-solid fa-sort text-slate-400 text-[10px]"></i>
+              <th data-sort="amount" class="th-sortable py-2 px-0.5 sm:px-3 cursor-pointer hover:bg-slate-200 transition-colors text-right w-[22%] sm:w-auto">
+                <div class="flex items-center justify-end gap-0.5 sm:gap-1">
+                  <span>Tổng</span>
+                  <i class="fa-solid fa-sort text-slate-400 text-[9px] sm:text-[10px]"></i>
                 </div>
               </th>
-              <th class="py-3 px-3 text-center w-28">Thao tác</th>
+              <th class="py-2 px-0.5 sm:px-3 text-center w-[7%] sm:w-20">
+                <span class="hidden sm:inline">Chi tiết</span>
+                <span class="sm:hidden"><i class="fa-solid fa-chevron-down text-[9px]"></i></span>
+              </th>
             </tr>
           </thead>
           <tbody id="expenses-tbody" class="divide-y divide-slate-200 bg-white">
@@ -296,13 +379,12 @@
           </tbody>
           <tfoot id="expenses-tfoot" class="hidden bg-emerald-50/80 border-t-2 border-emerald-500 font-extrabold text-slate-900">
             <tr>
-              <td colspan="3" class="py-3 px-3 text-right text-xs uppercase tracking-wider text-emerald-800">
+              <td colspan="4" class="py-2.5 sm:py-3 px-2 sm:px-3 text-right text-[11px] sm:text-xs uppercase tracking-wide text-emerald-800 font-bold">
                 Tổng cộng danh sách:
               </td>
-              <td id="tfoot-total-amount" class="py-3 px-3 text-right text-base text-emerald-800 font-black">
+              <td id="tfoot-total-amount" colspan="2" class="py-2.5 sm:py-3 px-2 sm:px-3 text-right text-xs sm:text-base text-emerald-800 font-black whitespace-nowrap">
                 0 ₫
               </td>
-              <td></td>
             </tr>
           </tfoot>
         </table>

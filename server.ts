@@ -68,7 +68,7 @@ async function requestWithCollectionFallback(
   endpointPath: string, // e.g. '' or '/<id>'
   options: RequestInit = {}
 ): Promise<{ ok: boolean; status: number; data?: any; errorText?: string }> {
-  const possibleCollections = ['expenses', 'chitieu', 'sochitieu', 'chi_tieu', 'data', 'items'];
+  const possibleCollections = ['chitieu', 'expenses', 'sochitieu', 'chi_tieu', 'data', 'items'];
 
   for (const col of possibleCollections) {
     try {
@@ -152,15 +152,21 @@ app.post('/api/expenses', async (req: Request, res: Response) => {
   }
 });
 
-// 3. Update expense in restdb
+// 3. Update expense in restdb or memory
 app.put('/api/expenses/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
 
-    if (id.startsWith('mem-')) {
+    const exists = memoryExpenses.some((m) => m._id === id);
+    if (exists) {
       memoryExpenses = memoryExpenses.map((m) => (m._id === id ? { ...m, ...updateData } : m));
-      saveMemoryExpenses(memoryExpenses);
+    } else {
+      memoryExpenses = [{ _id: id, ...updateData }, ...memoryExpenses];
+    }
+    saveMemoryExpenses(memoryExpenses);
+
+    if (id.startsWith('mem-') || id.startsWith('loc-')) {
       return res.json({ success: true, data: updateData, source: 'local' });
     }
 
@@ -169,27 +175,22 @@ app.put('/api/expenses/:id', async (req: Request, res: Response) => {
       body: JSON.stringify(updateData),
     });
 
-    if (!result.ok) {
-      memoryExpenses = memoryExpenses.map((m) => (m._id === id ? { ...m, ...updateData } : m));
-      saveMemoryExpenses(memoryExpenses);
-      return res.json({ success: true, data: updateData, source: 'local' });
-    }
-
-    return res.json({ success: true, data: result.data, source: 'restdb' });
+    return res.json({ success: true, data: result.ok ? result.data : updateData, source: result.ok ? 'restdb' : 'local' });
   } catch (err: any) {
     console.error('Error updating expense:', err);
     return res.status(500).json({ error: err.message || 'Lỗi cập nhật' });
   }
 });
 
-// 4. Delete single expense by ID from restdb
+// 4. Delete single expense by ID from restdb or memory
 app.delete('/api/expenses/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    if (id.startsWith('mem-')) {
-      memoryExpenses = memoryExpenses.filter((m) => m._id !== id);
-      saveMemoryExpenses(memoryExpenses);
+    memoryExpenses = memoryExpenses.filter((m) => m._id !== id);
+    saveMemoryExpenses(memoryExpenses);
+
+    if (id.startsWith('mem-') || id.startsWith('loc-')) {
       return res.json({ success: true, data: { _id: id }, source: 'local' });
     }
 
@@ -197,13 +198,7 @@ app.delete('/api/expenses/:id', async (req: Request, res: Response) => {
       method: 'DELETE',
     });
 
-    if (!result.ok) {
-      memoryExpenses = memoryExpenses.filter((m) => m._id !== id);
-      saveMemoryExpenses(memoryExpenses);
-      return res.json({ success: true, data: { _id: id }, source: 'local' });
-    }
-
-    return res.json({ success: true, data: result.data, source: 'restdb' });
+    return res.json({ success: true, data: result.ok ? result.data : { _id: id }, source: result.ok ? 'restdb' : 'local' });
   } catch (err: any) {
     console.error('Error deleting expense:', err);
     return res.status(500).json({ error: err.message || 'Lỗi xoá dữ liệu' });

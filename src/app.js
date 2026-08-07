@@ -6,7 +6,7 @@
 
 $(document).ready(function () {
   // --- RESTDB & STORAGE CONFIGURATION ---
-  const RESTDB_URL = 'https://dtoan-e791.restdb.io/rest/expenses';
+  const RESTDB_URL = 'https://dtoan-e791.restdb.io/rest/chitieu';
   const RESTDB_API_KEY = '6a74c1d37eee3e669ebc395c';
   const LOCAL_STORAGE_KEY = 'so_chi_tieu_ngan_ton_data';
 
@@ -15,13 +15,16 @@ $(document).ready(function () {
   let expensesList = [];
   let selectedSpender = 'Ngăn ❤️❤️❤️';
   let selectedMonthFilter = 'CURRENT';
+  let activeSpenderFilter = 'ALL'; // 'ALL', 'NGAN', 'TON'
   let searchQuery = '';
-  let sortField = 'created_at';
+  let sortField = 'date';
   let sortAsc = false;
   let currentPage = 1;
   let pageSize = 15;
   let editingRowId = null;
   let activeFocusRowId = null;
+  let expandedDates = new Set();
+  let initialExpansionDone = false;
 
   // --- INITIALIZATION ---
   initApp();
@@ -108,12 +111,22 @@ $(document).ready(function () {
     return getTodayYYYYMMDD();
   }
 
-  function parseAmountInK(val) {
-    let num = parseFloat(val) || 0;
-    if (num > 0 && num < 1000) {
-      return num * 1000;
+  function getPriceInK(rawAmt) {
+    let num = parseFloat(rawAmt) || 0;
+    if (num <= 0) return 0;
+    if (num >= 10000 && num % 1000 === 0) {
+      return num / 1000;
     }
     return num;
+  }
+
+  function parseAmountInK(val) {
+    let num = parseFloat(val) || 0;
+    if (num <= 0) return 0;
+    if (num >= 10000 && num % 1000 === 0) {
+      return num;
+    }
+    return num * 1000;
   }
 
   function formatCurrency(num) {
@@ -145,6 +158,15 @@ $(document).ready(function () {
   function getCurrentMonthYearStr() {
     const d = new Date();
     return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  }
+
+  function convertDDMMYYYYToYYYYMMDD(dateStr) {
+    if (!dateStr) return '00000000';
+    const parts = String(dateStr).trim().split('/');
+    if (parts.length === 3) {
+      return `${parts[2]}${parts[1].padStart(2, '0')}${parts[0].padStart(2, '0')}`;
+    }
+    return String(dateStr);
   }
 
   // --- LOCAL STORAGE DATA HELPERS ---
@@ -244,7 +266,7 @@ $(document).ready(function () {
       success: function (res) {
         $('#btn-reload-data i').removeClass('fa-spin');
         if (res && res.success && Array.isArray(res.items)) {
-          const localDocs = getLocalExpenses();
+          const localDocs = getLocalExpenses().filter((d) => d && d._id && !String(d._id).includes('_'));
           const serverIds = new Set(res.items.map((i) => i._id));
           const uniqueLocal = localDocs.filter((l) => l._id && !serverIds.has(l._id));
           rawDocs = [...res.items, ...uniqueLocal];
@@ -278,7 +300,7 @@ $(document).ready(function () {
       success: function (data) {
         $('#btn-reload-data i').removeClass('fa-spin');
         if (Array.isArray(data)) {
-          const localDocs = getLocalExpenses();
+          const localDocs = getLocalExpenses().filter((d) => d && d._id && !String(d._id).includes('_'));
           const serverIds = new Set(data.map((i) => i._id));
           const uniqueLocal = localDocs.filter((l) => l._id && !serverIds.has(l._id));
           rawDocs = [...data, ...uniqueLocal];
@@ -300,7 +322,8 @@ $(document).ready(function () {
 
   function fallbackToLocalStorageOnly() {
     $('#btn-reload-data i').removeClass('fa-spin');
-    rawDocs = getLocalExpenses();
+    rawDocs = getLocalExpenses().filter((d) => d && d._id && !String(d._id).includes('_'));
+    saveLocalExpenses(rawDocs);
     expensesList = normalizeExpensesData(rawDocs);
     updateRestDbStatus(false, 'Bộ nhớ Máy');
     renderAll();
@@ -340,21 +363,21 @@ $(document).ready(function () {
 
     const rowHtml = `
       <tr id="${rowId}" class="entry-row hover:bg-slate-50 transition-colors">
-        <td class="row-stt py-2 px-3 text-center text-xs font-bold text-slate-400 select-none">${rowCount}</td>
-        <td class="py-2 px-2">
-          <input type="text" class="input-row-expense w-full px-3 py-1.5 text-sm font-medium text-slate-800 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none" placeholder="Ví dụ: Đi chợ, Ăn trưa, Cà phê, Xăng xe..." value="${escapeHtml(expenseVal)}" />
+        <td class="row-stt py-1.5 sm:py-2 px-1 sm:px-3 text-center text-[11px] sm:text-xs font-bold text-slate-400 select-none">${rowCount}</td>
+        <td class="py-1 sm:py-2 px-1 sm:px-2">
+          <input type="text" class="input-row-expense w-full px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-medium text-slate-800 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none" list="common-expenses-list" placeholder="Ví dụ: Ăn sáng, Ăn trưa..." value="${escapeHtml(expenseVal)}" />
         </td>
-        <td class="py-2 px-2">
+        <td class="py-1 sm:py-2 px-1 sm:px-2">
           <div class="relative flex items-center">
-            <input type="number" step="any" min="0" class="input-row-amount w-full px-3 py-1.5 text-sm font-bold text-emerald-700 text-right bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none pr-16" placeholder="Ví dụ: 100 (=100k)" value="${displayAmt}" />
-            <span class="preview-formatted-amt absolute right-2 text-xs font-semibold text-slate-400 pointer-events-none">
+            <input type="number" step="any" min="0" class="input-row-amount w-full px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-bold text-emerald-700 text-right bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none pr-11 sm:pr-16" placeholder="Ví dụ: 100" value="${displayAmt}" />
+            <span class="preview-formatted-amt absolute right-1.5 sm:right-2 text-[10px] sm:text-xs font-semibold text-slate-400 pointer-events-none">
               ${displayAmt ? formatCurrency(parseAmountInK(displayAmt)) : 'k ₫'}
             </span>
           </div>
         </td>
-        <td class="py-2 px-2 text-center">
-          <button type="button" class="btn-delete-row p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" title="Xoá dòng này">
-            <i class="fa-solid fa-trash-can text-rose-500"></i>
+        <td class="py-1 sm:py-2 px-1 sm:px-2 text-center">
+          <button type="button" class="btn-delete-row p-1 sm:p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" title="Xoá dòng này">
+            <i class="fa-solid fa-trash-can text-rose-500 text-xs sm:text-sm"></i>
           </button>
         </td>
       </tr>
@@ -390,6 +413,32 @@ $(document).ready(function () {
     return total;
   }
 
+  function updateSpenderUI(spender) {
+    selectedSpender = spender || 'Ngăn ❤️❤️❤️';
+    const isNgan = String(selectedSpender).includes('Ngăn');
+
+    const $ngan = $('#btn-spender-ngan');
+    const $ton = $('#btn-spender-ton');
+
+    const baseClass = 'btn-spender-option flex items-center justify-center gap-1.5 sm:gap-2 py-1.5 sm:py-2.5 px-2 sm:px-3 border-2 rounded-xl font-bold text-xs sm:text-sm cursor-pointer transition-all';
+
+    if (isNgan) {
+      $ngan
+        .attr('class', `${baseClass} bg-pink-50 border-pink-500 text-pink-700 shadow-xs ring-2 ring-pink-300/60`)
+        .html('<span class="text-sm sm:text-base">❤️</span><span>Ngăn ❤️❤️❤️</span>');
+      $ton
+        .attr('class', `${baseClass} bg-white border-slate-200 text-slate-600 hover:bg-slate-50`)
+        .html('<span class="text-sm sm:text-base">🐷</span><span>Tòn 🐷🐷🐷</span>');
+    } else {
+      $ton
+        .attr('class', `${baseClass} bg-amber-50 border-amber-500 text-amber-900 shadow-xs ring-2 ring-amber-300/60`)
+        .html('<span class="text-sm sm:text-base">🐷</span><span>Tòn 🐷🐷🐷</span>');
+      $ngan
+        .attr('class', `${baseClass} bg-white border-slate-200 text-slate-600 hover:bg-slate-50`)
+        .html('<span class="text-sm sm:text-base">❤️</span><span>Ngăn ❤️❤️❤️</span>');
+    }
+  }
+
   // --- EVENT BINDINGS ---
   function bindEvents() {
     // Reload button
@@ -398,18 +447,10 @@ $(document).ready(function () {
     });
 
     // Spender toggle
-    $('.btn-spender-option').on('click', function () {
-      $('.btn-spender-option')
-        .removeClass('bg-pink-50 border-pink-500 text-pink-700 bg-amber-50 border-amber-500 text-amber-900 shadow-xs')
-        .addClass('bg-white border-slate-200 text-slate-600 hover:bg-slate-50');
-
-      selectedSpender = $(this).data('spender');
-
-      if (selectedSpender.includes('Ngăn')) {
-        $(this).addClass('bg-pink-50 border-pink-500 text-pink-700 shadow-xs');
-      } else {
-        $(this).addClass('bg-amber-50 border-amber-500 text-amber-900 shadow-xs');
-      }
+    $(document).on('click', '.btn-spender-option', function (e) {
+      e.preventDefault();
+      const val = $(this).attr('data-spender') || $(this).data('spender');
+      updateSpenderUI(val);
     });
 
     // Add row button
@@ -429,6 +470,11 @@ $(document).ready(function () {
         $row.find('input').val('');
         calculateBatchTotal();
       }
+    });
+
+    // Track row focus
+    $(document).on('focus', '.input-row-expense, .input-row-amount', function () {
+      activeFocusRowId = $(this).closest('tr').attr('id');
     });
 
     // Auto append new row when typing in the last row
@@ -460,18 +506,72 @@ $(document).ready(function () {
       $amtInput.val(nextVal).trigger('input');
     });
 
+    // Quick Expense Suggestions
+    $('.btn-quick-expense').on('click', function () {
+      const expenseName = $(this).data('expense');
+      
+      // Find the first empty row
+      let $emptyRow = null;
+      $('#expense-rows-body tr').each(function () {
+        const exp = $.trim($(this).find('.input-row-expense').val());
+        const amtStr = $.trim($(this).find('.input-row-amount').val());
+        const amt = parseFloat(amtStr) || 0;
+        if (exp === '' && amt === 0) {
+          $emptyRow = $(this);
+          return false; // Break out of loop
+        }
+      });
+
+      if ($emptyRow && $emptyRow.length) {
+        // Reuse the empty row
+        const $expInput = $emptyRow.find('.input-row-expense');
+        $expInput.val(expenseName).trigger('input');
+        activeFocusRowId = $emptyRow.attr('id');
+        $emptyRow.find('.input-row-amount').focus();
+      } else {
+        // Add a new row pre-filled with the selected expense
+        addFormRow(expenseName);
+        const $newRow = $('#expense-rows-body tr:last-child');
+        $newRow.find('.input-row-expense').trigger('input');
+        activeFocusRowId = $newRow.attr('id');
+        $newRow.find('.input-row-amount').focus();
+      }
+    });
+
     // Reset Form
     $('#btn-reset-form').on('click', function () {
       $('#expense-rows-body').empty();
       addFormRow();
       $('#input-date').val(getTodayYYYYMMDD());
-      $('#btn-spender-ngan').trigger('click');
+      updateSpenderUI('Ngăn ❤️❤️❤️');
       showToast('Đã làm mới form nhập', 'info');
     });
 
     // Submit Expenses
     $('#btn-submit-expenses').on('click', function () {
       submitExpensesForm();
+    });
+
+    // Spender filter by clicking on spender headers / cells / KPI cards
+    $(document).on('click', '.btn-filter-spender', function (e) {
+      e.stopPropagation();
+      const spender = String($(this).data('spender') || $(this).attr('data-spender') || '');
+      if (!spender) return;
+
+      if (activeSpenderFilter === spender) {
+        activeSpenderFilter = 'ALL';
+      } else {
+        activeSpenderFilter = spender;
+      }
+      currentPage = 1;
+      renderAll();
+    });
+
+    $(document).on('click', '.btn-clear-spender-filter', function (e) {
+      e.stopPropagation();
+      activeSpenderFilter = 'ALL';
+      currentPage = 1;
+      renderAll();
     });
 
     // Month filter change
@@ -528,10 +628,44 @@ $(document).ready(function () {
     });
 
     $('#btn-next-page').on('click', function () {
-      const maxPages = Math.ceil(getFilteredItems().length / pageSize) || 1;
+      const maxPages = Math.ceil(getGroupedByDateItems().length / pageSize) || 1;
       if (currentPage < maxPages) {
         currentPage++;
         renderTable();
+      }
+    });
+
+    // Toggle Date Group Child Table with smooth transition
+    $(document).on('click', '.date-group-header', function (e) {
+      if ($(e.target).closest('input, select, button.btn-inline-edit, button.btn-inline-delete, button.btn-inline-save, button.btn-inline-cancel').length) {
+        return;
+      }
+      const date = String($(this).attr('data-date') || $(this).data('date') || '');
+      if (!date) return;
+
+      const $headerRow = $(this);
+      const $childRow = $headerRow.next('.child-detail-row');
+      const $wrapper = $childRow.find('.child-wrapper');
+      const $btnToggle = $headerRow.find('.btn-toggle-date');
+      const $btnIcon = $headerRow.find('.btn-toggle-icon-container');
+
+      if (expandedDates.has(date)) {
+        expandedDates.delete(date);
+        $headerRow.removeClass('bg-emerald-50/40');
+        $btnToggle.removeClass('bg-emerald-100 text-emerald-800').addClass('bg-slate-100 text-slate-600 hover:bg-slate-200').attr('title', 'Xem chi tiết');
+        $btnToggle.html('<i class="fa-solid fa-chevron-down text-[11px] sm:text-xs"></i>');
+
+        $wrapper.stop(true, true).slideUp(250, function () {
+          $childRow.addClass('hidden');
+        });
+      } else {
+        expandedDates.add(date);
+        $headerRow.addClass('bg-emerald-50/40');
+        $btnToggle.addClass('bg-emerald-100 text-emerald-800').removeClass('bg-slate-100 text-slate-600 hover:bg-slate-200').attr('title', 'Thu gọn');
+        $btnToggle.html('<i class="fa-solid fa-chevron-up text-emerald-700 text-[11px] sm:text-xs"></i>');
+
+        $childRow.removeClass('hidden');
+        $wrapper.stop(true, true).hide().slideDown(250);
       }
     });
 
@@ -585,7 +719,7 @@ $(document).ready(function () {
           return false;
         }
 
-        const priceNum = rawAmt < 1000 ? rawAmt : rawAmt / 1000;
+        const priceNum = getPriceInK(rawAmt);
         sumDateVal += priceNum;
 
         usedItems.push({
@@ -688,6 +822,12 @@ $(document).ready(function () {
         return false;
       }
 
+      if (activeSpenderFilter === 'NGAN') {
+        if (!String(item.spender || '').includes('Ngăn')) return false;
+      } else if (activeSpenderFilter === 'TON') {
+        if (!String(item.spender || '').includes('Tòn')) return false;
+      }
+
       if (searchQuery !== '') {
         const query = searchQuery.toLowerCase();
         const expMatch = String(item.expense || '').toLowerCase().includes(query);
@@ -701,24 +841,44 @@ $(document).ready(function () {
     });
   }
 
-  function getSortedItems() {
+  function getGroupedByDateItems() {
     const filtered = getFilteredItems();
 
-    return filtered.sort((a, b) => {
-      let valA = a[sortField] || '';
-      let valB = b[sortField] || '';
+    const groupMap = {};
+    filtered.forEach((item) => {
+      const d = item.date || 'Không xác định';
+      if (!groupMap[d]) {
+        groupMap[d] = {
+          date: d,
+          items: [],
+          totalAmount: 0,
+          nganTotal: 0,
+          tonTotal: 0,
+        };
+      }
+      groupMap[d].items.push(item);
+      const amt = Number(item.amount) || 0;
+      groupMap[d].totalAmount += amt;
+
+      const spender = String(item.spender || '');
+      if (spender.includes('Tòn')) {
+        groupMap[d].tonTotal += amt;
+      } else {
+        groupMap[d].nganTotal += amt;
+      }
+    });
+
+    const groups = Object.values(groupMap);
+
+    return groups.sort((a, b) => {
+      const dateA = convertDDMMYYYYToYYYYMMDD(a.date);
+      const dateB = convertDDMMYYYYToYYYYMMDD(b.date);
 
       if (sortField === 'amount') {
-        valA = Number(valA) || 0;
-        valB = Number(valB) || 0;
-      } else {
-        valA = String(valA).toLowerCase();
-        valB = String(valB).toLowerCase();
+        return sortAsc ? a.totalAmount - b.totalAmount : b.totalAmount - a.totalAmount;
       }
 
-      if (valA < valB) return sortAsc ? -1 : 1;
-      if (valA > valB) return sortAsc ? 1 : -1;
-      return 0;
+      return sortAsc ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA);
     });
   }
 
@@ -804,18 +964,42 @@ $(document).ready(function () {
     $('#kpi-today-total').text(`Chi hôm nay: ${formatCurrency(todayTotal)}`);
   }
 
+  function renderSpenderFilterBadge() {
+    // Highlight active KPI cards and column headers without adding layout-shifting badges
+    $('[data-spender="NGAN"]').toggleClass('ring-2 ring-pink-500 bg-pink-100/90 shadow-sm', activeSpenderFilter === 'NGAN');
+    $('[data-spender="TON"]').toggleClass('ring-2 ring-amber-500 bg-amber-100/90 shadow-sm', activeSpenderFilter === 'TON');
+  }
+
   function renderTable() {
-    const sorted = getSortedItems();
-    const totalCount = sorted.length;
+    renderSpenderFilterBadge();
 
-    $('#table-count-badge').text(`${totalCount} dòng`);
+    const groupedList = getGroupedByDateItems();
+    const totalDaysCount = groupedList.length;
 
-    // Pagination slice
-    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    $('#table-count-badge').text(`${totalDaysCount} ngày`);
+
+    // Expand first date by default ONLY on initial load
+    if (!initialExpansionDone && groupedList.length > 0) {
+      expandedDates.add(groupedList[0].date);
+      initialExpansionDone = true;
+    }
+
+    // Force expand searching, filtering by spender, or editing
+    if (searchQuery !== '' || activeSpenderFilter !== 'ALL') {
+      groupedList.forEach((g) => expandedDates.add(g.date));
+    }
+    if (editingRowId) {
+      const editItem = expensesList.find((i) => i._id === editingRowId);
+      if (editItem && editItem.date) {
+        expandedDates.add(editItem.date);
+      }
+    }
+
+    const totalPages = Math.max(1, Math.ceil(totalDaysCount / pageSize));
     if (currentPage > totalPages) currentPage = totalPages;
 
     const startIdx = (currentPage - 1) * pageSize;
-    const paginated = sorted.slice(startIdx, startIdx + pageSize);
+    const paginated = groupedList.slice(startIdx, startIdx + pageSize);
 
     const $tbody = $('#expenses-tbody');
     $tbody.empty();
@@ -823,86 +1007,154 @@ $(document).ready(function () {
     if (paginated.length === 0) {
       $tbody.html(`
         <tr>
-          <td colspan="5" class="py-8 text-center text-slate-400 text-xs font-medium">
+          <td colspan="6" class="py-8 text-center text-slate-400 text-xs font-medium">
             Chưa có dữ liệu chi tiêu nào phù hợp
           </td>
         </tr>
       `);
       $('#expenses-tfoot').addClass('hidden');
     } else {
-      paginated.forEach((item) => {
-        const isEditing = editingRowId === item._id;
+      paginated.forEach((group) => {
+        const isExpanded = expandedDates.has(group.date);
 
-        if (isEditing) {
-          const rowHtml = `
-            <tr class="bg-emerald-50/70 border-b border-emerald-200">
-              <td class="py-2 px-2">
-                <input type="date" id="edit-date-${item._id}" value="${formatYYYYMMDD(item.date)}" class="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white font-medium" />
-              </td>
-              <td class="py-2 px-2">
-                <select id="edit-spender-${item._id}" class="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white font-bold">
-                  <option value="Ngăn ❤️❤️❤️" ${item.spender.includes('Ngăn') ? 'selected' : ''}>Ngăn ❤️❤️❤️</option>
-                  <option value="Tòn 🐷🐷🐷" ${item.spender.includes('Tòn') ? 'selected' : ''}>Tòn 🐷🐷🐷</option>
-                </select>
-              </td>
-              <td class="py-2 px-2">
-                <input type="text" id="edit-expense-${item._id}" value="${escapeHtml(item.expense)}" class="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white font-medium" />
-              </td>
-              <td class="py-2 px-2">
-                <input type="number" step="any" id="edit-amount-${item._id}" value="${item.amount || 0}" class="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white text-right font-bold text-emerald-700" />
-              </td>
-              <td class="py-2 px-2 text-center">
-                <div class="flex items-center justify-center gap-1">
-                  <button type="button" data-id="${item._id}" class="btn-inline-save p-1.5 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-colors cursor-pointer" title="Lưu">
-                    <i class="fa-solid fa-floppy-disk"></i>
-                  </button>
-                  <button type="button" class="btn-inline-cancel p-1.5 bg-slate-200 text-slate-700 rounded hover:bg-slate-300 transition-colors cursor-pointer" title="Hủy">
-                    <i class="fa-solid fa-xmark"></i>
-                  </button>
+        // Date Header Row
+        const dateRowHtml = `
+          <tr class="date-group-header hover:bg-slate-50 transition-colors cursor-pointer select-none border-b border-slate-200 ${
+            isExpanded ? 'bg-emerald-50/40' : ''
+          }" data-date="${escapeHtml(group.date)}">
+            <td class="py-1.5 sm:py-3 px-1 sm:px-3 font-extrabold text-slate-800 text-[10px] sm:text-sm">
+              <span class="text-[10px] sm:text-sm font-bold truncate">${escapeHtml(group.date)}</span>
+            </td>
+            <td class="py-1.5 sm:py-3 px-0.5 sm:px-2 text-center">
+              <span class="inline-flex items-center px-1 py-0.5 rounded-full text-[9px] sm:text-xs font-extrabold bg-slate-100 text-slate-700 border border-slate-200">
+                ${group.items.length}<span class="hidden sm:inline">&nbsp;món</span>
+              </span>
+            </td>
+            <td data-spender="NGAN" class="btn-filter-spender py-1.5 sm:py-3 px-0.5 sm:px-3 text-right font-bold text-pink-700 bg-pink-50/30 text-[10px] sm:text-sm cursor-pointer hover:bg-pink-100/80 transition-colors" title="Bấm để bật/tắt lọc chi tiêu của Ngăn">
+              ${group.nganTotal > 0 ? formatCurrency(group.nganTotal) : '<span class="text-slate-300 font-normal">-</span>'}
+            </td>
+            <td data-spender="TON" class="btn-filter-spender py-1.5 sm:py-3 px-0.5 sm:px-3 text-right font-bold text-amber-900 bg-amber-50/30 text-[10px] sm:text-sm cursor-pointer hover:bg-amber-100/80 transition-colors" title="Bấm để bật/tắt lọc chi tiêu của Tòn">
+              ${group.tonTotal > 0 ? formatCurrency(group.tonTotal) : '<span class="text-slate-300 font-normal">-</span>'}
+            </td>
+            <td class="py-1.5 sm:py-3 px-0.5 sm:px-3 text-right font-black text-emerald-700 text-[10px] sm:text-sm">
+              ${formatCurrency(group.totalAmount)}
+            </td>
+            <td class="py-1.5 sm:py-3 px-0.5 sm:px-3 text-center">
+              <button type="button" class="btn-toggle-date p-1 sm:p-1.5 text-xs font-bold ${
+                isExpanded ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              } rounded-lg transition-colors cursor-pointer" title="${isExpanded ? 'Thu gọn' : 'Xem chi tiết'}">
+                <i class="fa-solid ${isExpanded ? 'fa-chevron-up text-emerald-700' : 'fa-chevron-down'} text-[11px] sm:text-xs"></i>
+              </button>
+            </td>
+          </tr>
+        `;
+        $tbody.append(dateRowHtml);
+
+        // Child Sub-table Row
+        let subTableRowsHtml = '';
+
+        group.items.forEach((item) => {
+          const isEditing = editingRowId === item._id;
+
+          if (isEditing) {
+            const displayAmtVal = item.price ? parseFloat(item.price) : (item.amount >= 1000 ? item.amount / 1000 : item.amount || 0);
+            subTableRowsHtml += `
+              <tr class="bg-emerald-50 border-b border-emerald-200">
+                <td class="py-1 px-0.5 sm:px-2.5">
+                  <select id="edit-spender-${item._id}" class="w-full px-0.5 py-0.5 text-[9px] sm:text-[11px] border border-slate-300 rounded bg-white font-bold">
+                    <option value="Ngăn ❤️❤️❤️" ${item.spender.includes('Ngăn') ? 'selected' : ''}>Ngăn ❤️</option>
+                    <option value="Tòn 🐷🐷🐷" ${item.spender.includes('Tòn') ? 'selected' : ''}>Tòn 🐷</option>
+                  </select>
+                </td>
+                <td class="py-1 px-0.5 sm:px-2.5">
+                  <input type="text" id="edit-expense-${item._id}" list="common-expenses-list" value="${escapeHtml(item.expense)}" class="w-full px-1 py-0.5 text-[9px] sm:text-[11px] border border-slate-300 rounded bg-white font-medium" />
+                </td>
+                <td class="py-1 px-0.5 sm:px-2.5">
+                  <input type="number" step="any" id="edit-amount-${item._id}" value="${displayAmtVal}" class="w-full px-1 py-0.5 text-[9px] sm:text-[11px] border border-slate-300 rounded bg-white text-right font-bold text-emerald-700" />
+                </td>
+                <td class="py-1 px-0.5 sm:px-2.5 text-center whitespace-nowrap">
+                  <div class="flex items-center justify-center gap-0.5 sm:gap-1">
+                    <button type="button" data-id="${item._id}" class="btn-inline-save p-0.5 sm:p-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-colors cursor-pointer text-[10px] sm:text-xs" title="Lưu">
+                      <i class="fa-solid fa-floppy-disk"></i>
+                    </button>
+                    <button type="button" class="btn-inline-cancel p-0.5 sm:p-1 bg-slate-200 text-slate-700 rounded hover:bg-slate-300 transition-colors cursor-pointer text-[10px] sm:text-xs" title="Hủy">
+                      <i class="fa-solid fa-xmark"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          } else {
+            const isNgan = String(item.spender || '').includes('Ngăn');
+            const displaySpenderTag = isNgan ? 'Ngăn ❤️' : 'Tòn 🐷';
+            subTableRowsHtml += `
+              <tr class="hover:bg-slate-50 transition-colors">
+                <td class="py-1 px-0.5 sm:px-2.5 whitespace-nowrap">
+                  <span class="inline-flex items-center px-1 py-0.5 rounded-full text-[9px] sm:text-[11px] font-bold border whitespace-nowrap leading-tight ${
+                    isNgan ? 'bg-pink-100 text-pink-800 border-pink-200' : 'bg-amber-100 text-amber-900 border-amber-200'
+                  }">
+                    ${escapeHtml(displaySpenderTag)}
+                  </span>
+                </td>
+                <td class="py-1 px-0.5 sm:px-2.5 font-semibold text-slate-800 text-[10px] sm:text-[11px] leading-snug break-words">
+                  ${escapeHtml(item.expense)}
+                </td>
+                <td class="py-1 px-0.5 sm:px-2.5 text-right font-bold text-emerald-700 text-[10px] sm:text-xs whitespace-nowrap">
+                  ${formatCurrency(item.amount || 0)}
+                </td>
+                <td class="py-1 px-0.5 sm:px-2.5 text-center whitespace-nowrap">
+                  <div class="flex items-center justify-center gap-0.5 sm:gap-1">
+                    <button type="button" data-id="${item._id}" class="btn-inline-edit p-0.5 sm:p-1 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors cursor-pointer text-[10px] sm:text-xs" title="Sửa">
+                      <i class="fa-solid fa-pen-to-square"></i>
+                    </button>
+                    <button type="button" data-id="${item._id}" class="btn-inline-delete p-0.5 sm:p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer text-[10px] sm:text-xs" title="Xoá">
+                      <i class="fa-solid fa-trash-can text-rose-500"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }
+        });
+
+        const childRowHtml = `
+          <tr class="child-detail-row bg-slate-50/50 border-b-2 border-slate-200 ${isExpanded ? '' : 'hidden'}">
+            <td colspan="6" class="p-0 border-0">
+              <div class="child-wrapper py-1 px-0.5 sm:px-3 overflow-hidden" style="${isExpanded ? '' : 'display: none;'}">
+                <div class="my-1 ml-3 sm:ml-8 bg-white rounded-xl border border-slate-200/90 shadow-2xs border-l-2 sm:border-l-4 border-l-emerald-600 overflow-hidden">
+                  <div class="px-1.5 sm:px-3 py-1 bg-slate-100/90 border-b border-slate-200 flex flex-wrap items-center justify-between gap-1 text-[10px] sm:text-[11px] font-extrabold text-slate-700">
+                    <span class="flex items-center gap-1 sm:gap-1.5 text-emerald-800">
+                      <i class="fa-solid fa-list-check text-emerald-600"></i>
+                      Chi tiết ngày ${escapeHtml(group.date)}
+                    </span>
+                    <span class="text-slate-500 font-bold">Tổng: ${formatCurrency(group.totalAmount)}</span>
+                  </div>
+                  <div class="overflow-x-auto sm:overflow-visible">
+                    <table class="w-full text-left text-[10px] sm:text-xs border-collapse table-fixed sm:table-auto">
+                      <thead>
+                        <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold select-none text-[9px] sm:text-[11px]">
+                          <th class="py-1 px-0.5 sm:px-2.5 w-[20%] sm:w-28 whitespace-nowrap">Người</th>
+                          <th class="py-1 px-0.5 sm:px-2.5">Nội dung</th>
+                          <th class="py-1 px-0.5 sm:px-2.5 text-right w-[25%] sm:w-28 whitespace-nowrap">Số tiền</th>
+                          <th class="py-1 px-0.5 sm:px-2.5 text-center w-[15%] sm:w-16 whitespace-nowrap">Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100 bg-white">
+                        ${subTableRowsHtml}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </td>
-            </tr>
-          `;
-          $tbody.append(rowHtml);
-        } else {
-          const isNgan = String(item.spender || '').includes('Ngăn');
-          const rowHtml = `
-            <tr class="hover:bg-slate-50/80 transition-colors">
-              <td class="py-2.5 px-3 font-medium text-slate-600 text-xs">
-                <i class="fa-regular fa-calendar text-slate-400 mr-1"></i>
-                <span>${escapeHtml(item.date)}</span>
-              </td>
-              <td class="py-2.5 px-3">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                  isNgan ? 'bg-pink-100 text-pink-800 border-pink-200' : 'bg-amber-100 text-amber-900 border-amber-200'
-                }">
-                  ${escapeHtml(item.spender || 'Ngăn ❤️❤️❤️')}
-                </span>
-              </td>
-              <td class="py-2.5 px-3 font-semibold text-slate-800">
-                ${escapeHtml(item.expense)}
-              </td>
-              <td class="py-2.5 px-3 text-right font-bold text-emerald-700 text-sm">
-                ${formatCurrency(item.amount || 0)}
-              </td>
-              <td class="py-2.5 px-3 text-center">
-                <div class="flex items-center justify-center gap-1">
-                  <button type="button" data-id="${item._id}" class="btn-inline-edit p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer" title="Sửa">
-                    <i class="fa-solid fa-pen-to-square"></i>
-                  </button>
-                  <button type="button" data-id="${item._id}" class="btn-inline-delete p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" title="Xoá">
-                    <i class="fa-solid fa-trash-can text-rose-500"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-          `;
-          $tbody.append(rowHtml);
-        }
+              </div>
+            </td>
+          </tr>
+        `;
+        $tbody.append(childRowHtml);
       });
 
       // Render Tfoot Total
-      const totalListAmount = sorted.reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
+      const filteredAll = getFilteredItems();
+      const totalListAmount = filteredAll.reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
       $('#tfoot-total-amount').text(formatCurrency(totalListAmount));
       $('#expenses-tfoot').removeClass('hidden');
     }
@@ -915,59 +1167,115 @@ $(document).ready(function () {
 
   // --- INLINE EDIT & DELETE ---
   function saveInlineEdit(id) {
-    const dateVal = $(`#edit-date-${id}`).val();
-    const spenderVal = $(`#edit-spender-${id}`).val();
+    const targetItem = expensesList.find((i) => i._id === id);
+    if (!targetItem) {
+      showToast('Không tìm thấy khoản chi tiêu cần sửa!', 'error');
+      return;
+    }
+
+    const spenderVal = $(`#edit-spender-${id}`).val() || targetItem.spender;
     const expenseVal = $.trim($(`#edit-expense-${id}`).val());
     const rawAmt = parseFloat($(`#edit-amount-${id}`).val()) || 0;
-    const amtVal = parseAmountInK(rawAmt);
+    const priceNum = getPriceInK(rawAmt);
+    const amtVal = priceNum * 1000;
 
     if (!expenseVal) {
       showToast('Tên chi phí không được để trống!', 'error');
       return;
     }
 
-    const updateData = {
-      date: formatDateDDMMYYYY(dateVal),
-      spender: spenderVal,
-      expense: expenseVal,
-      amount: amtVal,
+    if (rawAmt <= 0) {
+      showToast('Số tiền chi phí phải > 0!', 'error');
+      return;
+    }
+
+    const targetDocId = targetItem.doc_id || id;
+    const itemIndex = typeof targetItem.item_index === 'number' ? targetItem.item_index : 0;
+    const newUserLabel = spenderVal.includes('Ngăn') ? 'ngân' : 'tòn';
+    const formattedDate = formatDateDDMMYYYY(targetItem.date || getTodayYYYYMMDD());
+
+    let parentDoc = rawDocs.find((d) => d._id === targetDocId);
+    let updatedDoc;
+
+    if (parentDoc) {
+      if (Array.isArray(parentDoc.used) && parentDoc.used.length > 0) {
+        const updatedUsed = [...parentDoc.used];
+        updatedUsed[itemIndex] = {
+          name: expenseVal,
+          price: String(priceNum),
+        };
+        const newSumdate = updatedUsed.reduce((sum, u) => sum + (parseFloat(u.price) || 0), 0);
+        updatedDoc = {
+          ...parentDoc,
+          date: formattedDate,
+          user: newUserLabel,
+          used: updatedUsed,
+          sumdate: newSumdate,
+        };
+      } else {
+        updatedDoc = {
+          ...parentDoc,
+          date: formattedDate,
+          user: newUserLabel,
+          expense: expenseVal,
+          amount: amtVal,
+          price: String(priceNum),
+          used: [{ name: expenseVal, price: String(priceNum) }],
+          sumdate: priceNum,
+        };
+      }
+    } else {
+      updatedDoc = {
+        _id: targetDocId,
+        date: formattedDate,
+        user: newUserLabel,
+        used: [{ name: expenseVal, price: String(priceNum) }],
+        sumdate: priceNum,
+      };
+    }
+
+    const applyUpdateLocally = () => {
+      const exists = rawDocs.some((d) => d._id === targetDocId);
+      if (exists) {
+        rawDocs = rawDocs.map((d) => (d._id === targetDocId ? updatedDoc : d));
+      } else {
+        rawDocs.unshift(updatedDoc);
+      }
+      saveLocalExpenses(rawDocs);
+      expensesList = normalizeExpensesData(rawDocs);
+      editingRowId = null;
+      renderAll();
     };
 
     // Attempt Express PUT
     $.ajax({
-      url: `/api/expenses/${id}`,
+      url: `/api/expenses/${targetDocId}`,
       method: 'PUT',
       contentType: 'application/json',
-      data: JSON.stringify(updateData),
+      data: JSON.stringify(updatedDoc),
       timeout: 5000,
-      success: function (res) {
-        editingRowId = null;
-        showToast('Đã cập nhật chi tiêu!', 'success');
-        loadExpenses();
+      success: function () {
+        applyUpdateLocally();
+        showToast('Đã cập nhật chi tiêu thành công!', 'success');
       },
       error: function () {
         // Fallback direct RestDB or local
         $.ajax({
-          url: `${RESTDB_URL}/${id}`,
+          url: `${RESTDB_URL}/${targetDocId}`,
           method: 'PUT',
           headers: {
             'x-apikey': RESTDB_API_KEY,
             'Content-Type': 'application/json',
           },
-          data: JSON.stringify(updateData),
+          data: JSON.stringify(updatedDoc),
           timeout: 5000,
           success: function () {
-            editingRowId = null;
+            applyUpdateLocally();
             showToast('Đã cập nhật chi tiêu trên RestDB!', 'success');
-            loadExpenses();
           },
           error: function () {
-            // Local update
-            expensesList = expensesList.map((item) => (item._id === id ? { ...item, ...updateData } : item));
-            saveLocalExpenses(expensesList);
-            editingRowId = null;
+            applyUpdateLocally();
             showToast('Đã cập nhật chi tiêu trong bộ nhớ!', 'success');
-            renderAll();
           },
         });
       },
@@ -978,37 +1286,100 @@ $(document).ready(function () {
     if (!window.confirm('Bạn có chắc chắn muốn xoá khoản chi tiêu này không?')) return;
 
     const targetItem = expensesList.find((i) => i._id === id);
-    const targetDocId = targetItem ? targetItem.doc_id : id;
+    if (!targetItem) {
+      showToast('Không tìm thấy khoản chi tiêu cần xoá!', 'error');
+      return;
+    }
 
-    $.ajax({
-      url: `/api/expenses/${targetDocId}`,
-      method: 'DELETE',
-      timeout: 5000,
-      success: function () {
-        showToast('Đã xoá khoản chi tiêu!', 'success');
-        loadExpenses();
-      },
-      error: function () {
-        $.ajax({
-          url: `${RESTDB_URL}/${targetDocId}`,
-          method: 'DELETE',
-          headers: {
-            'x-apikey': RESTDB_API_KEY,
-          },
-          timeout: 5000,
-          success: function () {
-            showToast('Đã xoá trên RestDB!', 'success');
-            loadExpenses();
-          },
-          error: function () {
-            rawDocs = rawDocs.filter((d) => d._id !== targetDocId && d._id !== id);
-            saveLocalExpenses(rawDocs);
-            expensesList = normalizeExpensesData(rawDocs);
-            showToast('Đã xoá khỏi bộ nhớ máy!', 'success');
-            renderAll();
-          },
-        });
-      },
-    });
+    const targetDocId = targetItem.doc_id || id;
+    const itemIndex = typeof targetItem.item_index === 'number' ? targetItem.item_index : 0;
+    const parentDoc = rawDocs.find((d) => d._id === targetDocId);
+
+    if (parentDoc && Array.isArray(parentDoc.used) && parentDoc.used.length > 1) {
+      // Remove only this item from `used` array
+      const updatedUsed = parentDoc.used.filter((_, idx) => idx !== itemIndex);
+      const newSumdate = updatedUsed.reduce((sum, u) => sum + (parseFloat(u.price) || 0), 0);
+
+      const updatedDoc = {
+        ...parentDoc,
+        used: updatedUsed,
+        sumdate: newSumdate,
+      };
+
+      const applyUpdateLocally = () => {
+        rawDocs = rawDocs.map((d) => (d._id === targetDocId ? updatedDoc : d));
+        saveLocalExpenses(rawDocs);
+        expensesList = normalizeExpensesData(rawDocs);
+        renderAll();
+      };
+
+      $.ajax({
+        url: `/api/expenses/${targetDocId}`,
+        method: 'PUT',
+        contentType: 'application/json',
+        data: JSON.stringify(updatedDoc),
+        timeout: 5000,
+        success: function () {
+          applyUpdateLocally();
+          showToast('Đã xoá khoản chi tiêu!', 'success');
+        },
+        error: function () {
+          $.ajax({
+            url: `${RESTDB_URL}/${targetDocId}`,
+            method: 'PUT',
+            headers: {
+              'x-apikey': RESTDB_API_KEY,
+              'Content-Type': 'application/json',
+            },
+            data: JSON.stringify(updatedDoc),
+            timeout: 5000,
+            success: function () {
+              applyUpdateLocally();
+              showToast('Đã xoá khoản chi tiêu!', 'success');
+            },
+            error: function () {
+              applyUpdateLocally();
+              showToast('Đã xoá khoản chi tiêu khỏi bộ nhớ!', 'success');
+            },
+          });
+        },
+      });
+    } else {
+      // Single item document, delete the whole document
+      const applyDeleteLocally = () => {
+        rawDocs = rawDocs.filter((d) => d._id !== targetDocId);
+        saveLocalExpenses(rawDocs);
+        expensesList = normalizeExpensesData(rawDocs);
+        renderAll();
+      };
+
+      $.ajax({
+        url: `/api/expenses/${targetDocId}`,
+        method: 'DELETE',
+        timeout: 5000,
+        success: function () {
+          applyDeleteLocally();
+          showToast('Đã xoá khoản chi tiêu!', 'success');
+        },
+        error: function () {
+          $.ajax({
+            url: `${RESTDB_URL}/${targetDocId}`,
+            method: 'DELETE',
+            headers: {
+              'x-apikey': RESTDB_API_KEY,
+            },
+            timeout: 5000,
+            success: function () {
+              applyDeleteLocally();
+              showToast('Đã xoá trên RestDB!', 'success');
+            },
+            error: function () {
+              applyDeleteLocally();
+              showToast('Đã xoá khỏi bộ nhớ máy!', 'success');
+            },
+          });
+        },
+      });
+    }
   }
 });
