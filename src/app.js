@@ -1,3 +1,5 @@
+import './index.css';
+
 /**
  * Sổ Chi Tiêu Ngăn ❤️ & Tòn 🐷
  * Tech Stack: Pure HTML5, jQuery 3.7, Tailwind CSS
