@@ -10,6 +10,13 @@ $(document).ready(function () {
   const RESTDB_API_KEY = '6a74c1d37eee3e669ebc395c';
   const LOCAL_STORAGE_KEY = 'so_chi_tieu_ngan_ton_data';
 
+  const isStaticHost =
+    window.location.protocol === 'file:' ||
+    window.location.hostname.includes('github.io') ||
+    window.location.hostname.includes('netlify') ||
+    window.location.hostname.includes('vercel') ||
+    window.location.hostname.includes('pages.dev');
+
   // App State
   let rawDocs = [];
   let expensesList = [];
@@ -270,13 +277,6 @@ $(document).ready(function () {
 
     return flattened;
   }
-
-  const isStaticHost =
-    window.location.protocol === 'file:' ||
-    window.location.hostname.includes('github.io') ||
-    window.location.hostname.includes('netlify') ||
-    window.location.hostname.includes('vercel') ||
-    window.location.hostname.includes('pages.dev');
 
   // --- DATA FETCHING (SERVER API -> RESTDB -> LOCALSTORAGE FALLBACK) ---
   function loadExpenses() {
@@ -744,89 +744,95 @@ $(document).ready(function () {
 
   // --- SUBMIT FORM ---
   function submitExpensesForm() {
-    const rawDate = $('#input-date').val() || getTodayYYYYMMDD();
-    const formattedDate = formatDateDDMMYYYY(rawDate);
-    const userLabel = selectedSpender.includes('Ngăn') ? 'ngân' : 'tòn';
-
-    const usedItems = [];
-    let sumDateVal = 0;
-    let hasInvalidRow = false;
-
-    $('#expense-rows-body tr').each(function () {
-      const expName = $.trim($(this).find('.input-row-expense').val());
-      const amtStr = $(this).find('.input-row-amount').val();
-      const rawAmt = parseFloat(amtStr) || 0;
-
-      if (expName || rawAmt > 0) {
-        if (!expName) {
-          hasInvalidRow = true;
-          $(this).find('.input-row-expense').focus();
-          return false;
-        }
-        if (rawAmt <= 0) {
-          hasInvalidRow = true;
-          $(this).find('.input-row-amount').focus();
-          return false;
-        }
-
-        const priceNum = getPriceInK(rawAmt);
-        sumDateVal += priceNum;
-
-        usedItems.push({
-          name: expName,
-          price: String(priceNum),
-        });
-      }
-    });
-
-    if (hasInvalidRow) {
-      showToast('Vui lòng kiểm tra lại: Tên chi phí không được để trống và số tiền phải > 0!', 'error');
-      return;
-    }
-
-    if (usedItems.length === 0) {
-      showToast('Vui lòng nhập ít nhất 1 khoản chi phí!', 'error');
-      return;
-    }
-
-    // MATCH EXACT USER REQUESTED SCHEMA
-    const payloadSchema = {
-      date: formattedDate,
-      user: userLabel,
-      used: usedItems,
-      sumdate: sumDateVal,
-    };
-
-    const totalAmountInVnd = sumDateVal * 1000;
-
     const $btn = $('#btn-submit-expenses');
-    $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> Đang lưu...');
+    try {
+      const rawDate = $('#input-date').val() || getTodayYYYYMMDD();
+      const formattedDate = formatDateDDMMYYYY(rawDate);
+      const userLabel = selectedSpender.includes('Ngăn') ? 'ngân' : 'tòn';
 
-    if (isStaticHost) {
-      saveToDirectRestDbOrLocal(payloadSchema, totalAmountInVnd);
-      return;
-    }
+      const usedItems = [];
+      let sumDateVal = 0;
+      let hasInvalidRow = false;
 
-    $.ajax({
-      url: '/api/expenses',
-      method: 'POST',
-      contentType: 'application/json',
-      data: JSON.stringify(payloadSchema),
-      timeout: 6000,
-      success: function (res) {
-        $btn.prop('disabled', false).html('<i class="fa-solid fa-paper-plane"></i> Lưu Chi Tiêu');
-        if (res && res.success) {
-          showToast(`Đã lưu thành công ${usedItems.length} khoản chi (${formatCurrency(totalAmountInVnd)})!`, 'success');
-          $('#btn-reset-form').trigger('click');
-          loadExpenses();
-        } else {
-          saveToDirectRestDbOrLocal(payloadSchema, totalAmountInVnd);
+      $('#expense-rows-body tr').each(function () {
+        const expName = $.trim($(this).find('.input-row-expense').val());
+        const amtStr = $(this).find('.input-row-amount').val();
+        const rawAmt = parseFloat(amtStr) || 0;
+
+        if (expName || rawAmt > 0) {
+          if (!expName) {
+            hasInvalidRow = true;
+            $(this).find('.input-row-expense').focus();
+            return false;
+          }
+          if (rawAmt <= 0) {
+            hasInvalidRow = true;
+            $(this).find('.input-row-amount').focus();
+            return false;
+          }
+
+          const priceNum = getPriceInK(rawAmt);
+          sumDateVal += priceNum;
+
+          usedItems.push({
+            name: expName,
+            price: String(priceNum),
+          });
         }
-      },
-      error: function () {
+      });
+
+      if (hasInvalidRow) {
+        showToast('Vui lòng kiểm tra lại: Tên chi phí không được để trống và số tiền phải > 0!', 'error');
+        return;
+      }
+
+      if (usedItems.length === 0) {
+        showToast('Vui lòng nhập ít nhất 1 khoản chi phí!', 'error');
+        return;
+      }
+
+      // MATCH EXACT USER REQUESTED SCHEMA
+      const payloadSchema = {
+        date: formattedDate,
+        user: userLabel,
+        used: usedItems,
+        sumdate: sumDateVal,
+      };
+
+      const totalAmountInVnd = sumDateVal * 1000;
+
+      $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> Đang lưu...');
+
+      if (isStaticHost) {
         saveToDirectRestDbOrLocal(payloadSchema, totalAmountInVnd);
-      },
-    });
+        return;
+      }
+
+      $.ajax({
+        url: '/api/expenses',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(payloadSchema),
+        timeout: 6000,
+        success: function (res) {
+          $btn.prop('disabled', false).html('<i class="fa-solid fa-paper-plane"></i> Lưu Chi Tiêu');
+          if (res && res.success) {
+            showToast(`Đã lưu thành công ${usedItems.length} khoản chi (${formatCurrency(totalAmountInVnd)})!`, 'success');
+            $('#btn-reset-form').trigger('click');
+            loadExpenses();
+          } else {
+            saveToDirectRestDbOrLocal(payloadSchema, totalAmountInVnd);
+          }
+        },
+        error: function () {
+          saveToDirectRestDbOrLocal(payloadSchema, totalAmountInVnd);
+        },
+      });
+    } catch (err) {
+      console.error('Error submitting form:', err);
+      $btn.prop('disabled', false).html('<i class="fa-solid fa-paper-plane"></i> Lưu Chi Tiêu');
+      showToast('Có lỗi xảy ra khi lưu chi tiêu. Vui lòng thử lại!', 'error');
+    }
   }
 
   function saveToDirectRestDbOrLocal(payloadSchema, totalAmountInVnd) {
