@@ -390,17 +390,19 @@ $(document).ready(function () {
       if (displayAmt === 0) displayAmt = '';
     }
 
+    const initialUnit = (parseFloat(displayAmt) || 0) >= 10000 ? '₫' : '.000 ₫';
+
     const rowHtml = `
       <tr id="${rowId}" class="entry-row hover:bg-slate-50 transition-colors">
         <td class="row-stt py-1.5 sm:py-2 px-1 sm:px-3 text-center text-[11px] sm:text-xs font-bold text-slate-400 select-none">${rowCount}</td>
         <td class="py-1 sm:py-2 px-1 sm:px-2">
-          <input type="text" class="input-row-expense w-full px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-medium text-slate-800 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none" list="common-expenses-list" placeholder="Ví dụ: Ăn sáng, Ăn trưa..." value="${escapeHtml(expenseVal)}" />
+          <input type="text" class="input-row-expense w-full px-2 py-1.5 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-medium text-slate-800 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none" list="common-expenses-list" placeholder="Ví dụ: Ăn sáng, Ăn trưa..." value="${escapeHtml(expenseVal)}" />
         </td>
         <td class="py-1 sm:py-2 px-1 sm:px-2">
-          <div class="relative flex items-center">
-            <input type="number" step="any" min="0" class="input-row-amount w-full px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-bold text-emerald-700 text-right bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none pr-11 sm:pr-16" placeholder="Ví dụ: 100" value="${displayAmt}" />
-            <span class="preview-formatted-amt absolute right-1.5 sm:right-2 text-[10px] sm:text-xs font-semibold text-slate-400 pointer-events-none">
-              ${displayAmt ? formatCurrency(parseAmountInK(displayAmt)) : 'k ₫'}
+          <div class="flex items-center rounded-lg border border-slate-300 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500 shadow-2xs">
+            <input type="number" step="any" min="0" class="input-row-amount w-full min-w-0 px-2 py-1.5 sm:px-3 sm:py-1.5 text-xs sm:text-sm font-bold text-emerald-700 text-right focus:outline-none bg-transparent" placeholder="100" value="${displayAmt}" />
+            <span class="preview-formatted-amt bg-slate-100 text-slate-600 px-1.5 sm:px-2 py-1.5 text-[10px] sm:text-xs font-bold border-l border-slate-200 shrink-0 select-none">
+              ${initialUnit}
             </span>
           </div>
         </td>
@@ -427,15 +429,16 @@ $(document).ready(function () {
     let total = 0;
     $('#expense-rows-body tr').each(function () {
       const amtStr = $(this).find('.input-row-amount').val();
+      const num = parseFloat(amtStr) || 0;
       const amt = parseAmountInK(amtStr);
       total += amt;
 
-      // Update row live preview label
+      // Update row live preview unit suffix
       const $preview = $(this).find('.preview-formatted-amt');
-      if (amtStr && parseFloat(amtStr) > 0) {
-        $preview.html(`<span class="text-emerald-600 font-bold">${formatCurrency(amt)}</span>`);
+      if (num >= 10000) {
+        $preview.text('₫');
       } else {
-        $preview.text('k ₫');
+        $preview.text('.000 ₫');
       }
     });
     $('#batch-total-display').text(formatCurrency(total));

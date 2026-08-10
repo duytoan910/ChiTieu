@@ -5,6 +5,33 @@ body {
   color: #0f172a;
 }
 
+/* Date picker cross-browser & iOS Safari styling */
+input[type="date"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  min-height: 42px;
+  background-color: #ffffff;
+  color: #1e293b;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  border-radius: 6px;
+  opacity: 0.65;
+  padding: 4px;
+  margin-left: auto;
+  transition: opacity 0.2s;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
 /* Custom scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
