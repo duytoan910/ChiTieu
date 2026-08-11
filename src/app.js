@@ -239,13 +239,15 @@ $(document).ready(function () {
           const itemName = item.name || item.expense || 'Chi tiêu';
           const priceRaw = item.price || item.amount || 0;
           const amtVal = parseAmountInK(priceRaw);
+          const itemUser = item.user || item.spender || docUser;
+          const spenderDisplay = formatSpenderName(itemUser);
 
           flattened.push({
             _id: `${docId}_${itemIdx}`,
             doc_id: docId,
             item_index: itemIdx,
             date: docDate,
-            user: docUser,
+            user: itemUser,
             spender: spenderDisplay,
             expense: itemName,
             amount: amtVal,
@@ -258,13 +260,15 @@ $(document).ready(function () {
         const itemName = doc.expense || doc.name || 'Chi tiêu';
         const priceRaw = doc.price || doc.amount || 0;
         const amtVal = parseAmountInK(priceRaw);
+        const itemUser = doc.user || doc.spender || 'ngân';
+        const spenderDisplay = formatSpenderName(itemUser);
 
         flattened.push({
           _id: docId,
           doc_id: docId,
           item_index: 0,
           date: docDate,
-          user: docUser,
+          user: itemUser,
           spender: spenderDisplay,
           expense: itemName,
           amount: amtVal,
@@ -780,6 +784,7 @@ $(document).ready(function () {
           usedItems.push({
             name: expName,
             price: String(priceNum),
+            user: userLabel,
           });
         }
       });
@@ -984,10 +989,13 @@ $(document).ready(function () {
     const activeMY = selectedMonthFilter === 'CURRENT' ? currentMY : selectedMonthFilter;
 
     let monthTotal = 0;
-    let nganTotal = 0;
-    let tonTotal = 0;
+    let nganMonthTotal = 0;
+    let tonMonthTotal = 0;
     let monthCount = 0;
+
     let todayTotal = 0;
+    let nganTodayTotal = 0;
+    let tonTodayTotal = 0;
 
     const todayFormatted = formatDateDDMMYYYY(getTodayYYYYMMDD());
 
@@ -995,35 +1003,43 @@ $(document).ready(function () {
       const my = extractMonthYear(item.date);
       const amt = Number(item.amount) || 0;
       const formattedItemDate = formatDateDDMMYYYY(item.date);
+      const spender = String(item.spender || '');
+      const isTon = spender.includes('Tòn');
 
       if (activeMY === 'ALL' || my === activeMY) {
         monthTotal += amt;
         monthCount++;
 
-        const spender = String(item.spender || '');
-        if (spender.includes('Ngăn')) {
-          nganTotal += amt;
-        } else if (spender.includes('Tòn')) {
-          tonTotal += amt;
+        if (isTon) {
+          tonMonthTotal += amt;
         } else {
-          nganTotal += amt;
+          nganMonthTotal += amt;
         }
       }
 
       if (formattedItemDate === todayFormatted) {
         todayTotal += amt;
+        if (isTon) {
+          tonTodayTotal += amt;
+        } else {
+          nganTodayTotal += amt;
+        }
       }
     });
 
-    const nganPercent = monthTotal > 0 ? Math.round((nganTotal / monthTotal) * 100) : 0;
-    const tonPercent = monthTotal > 0 ? Math.round((tonTotal / monthTotal) * 100) : 0;
+    const nganPercent = monthTotal > 0 ? Math.round((nganMonthTotal / monthTotal) * 100) : 0;
+    const tonPercent = monthTotal > 0 ? Math.round((tonMonthTotal / monthTotal) * 100) : 0;
 
     $('#kpi-month-label').text(activeMY === 'ALL' ? 'Tất cả' : `Tháng ${activeMY}`);
     $('#kpi-month-total').text(formatCurrency(monthTotal));
-    $('#kpi-ngan-total').text(formatCurrency(nganTotal));
-    $('#kpi-ngan-percent').text(`${nganPercent}% tổng chi tháng`);
-    $('#kpi-ton-total').text(formatCurrency(tonTotal));
-    $('#kpi-ton-percent').text(`${tonPercent}% tổng chi tháng`);
+
+    // Equal Width Cards: Primary = Daily spending, Secondary = Monthly spending
+    $('#kpi-ngan-today').text(formatCurrency(nganTodayTotal));
+    $('#kpi-ngan-month').text(`Tháng này: ${formatCurrency(nganMonthTotal)} (${nganPercent}%)`);
+
+    $('#kpi-ton-today').text(formatCurrency(tonTodayTotal));
+    $('#kpi-ton-month').text(`Tháng này: ${formatCurrency(tonMonthTotal)} (${tonPercent}%)`);
+
     $('#kpi-month-count').text(`${monthCount} khoản`);
     $('#kpi-today-total').text(`Chi hôm nay: ${formatCurrency(todayTotal)}`);
   }
@@ -1263,16 +1279,27 @@ $(document).ready(function () {
 
     if (parentDoc) {
       if (Array.isArray(parentDoc.used) && parentDoc.used.length > 0) {
-        const updatedUsed = [...parentDoc.used];
-        updatedUsed[itemIndex] = {
-          name: expenseVal,
-          price: String(priceNum),
-        };
+        const updatedUsed = parentDoc.used.map((item, idx) => {
+          if (idx === itemIndex) {
+            return {
+              name: expenseVal,
+              price: String(priceNum),
+              user: newUserLabel,
+            };
+          }
+          return {
+            ...item,
+            user: item.user || parentDoc.user || 'ngân',
+          };
+        });
+
         const newSumdate = updatedUsed.reduce((sum, u) => sum + (parseFloat(u.price) || 0), 0);
+        const docUser = parentDoc.user || newUserLabel;
+
         updatedDoc = {
           ...parentDoc,
           date: formattedDate,
-          user: newUserLabel,
+          user: docUser,
           used: updatedUsed,
           sumdate: newSumdate,
         };
@@ -1284,7 +1311,7 @@ $(document).ready(function () {
           expense: expenseVal,
           amount: amtVal,
           price: String(priceNum),
-          used: [{ name: expenseVal, price: String(priceNum) }],
+          used: [{ name: expenseVal, price: String(priceNum), user: newUserLabel }],
           sumdate: priceNum,
         };
       }
@@ -1293,7 +1320,7 @@ $(document).ready(function () {
         _id: targetDocId,
         date: formattedDate,
         user: newUserLabel,
-        used: [{ name: expenseVal, price: String(priceNum) }],
+        used: [{ name: expenseVal, price: String(priceNum), user: newUserLabel }],
         sumdate: priceNum,
       };
     }
