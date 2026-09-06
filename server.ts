@@ -123,10 +123,12 @@ app.get('/api/expenses', async (req: Request, res: Response) => {
   if (!result.ok) {
     // If RestDB collection doesn't exist or errors, return memoryExpenses as fallback
     console.warn('RestDB returned error, using fallback memory storage:', result.errorText);
-    return res.json({ success: true, items: memoryExpenses, source: 'local' });
+    const safeMem = memoryExpenses.filter((item: any) => item && item.user !== '_income_config_' && item.type !== 'income');
+    return res.json({ success: true, items: safeMem, source: 'local' });
   }
 
-  const items = Array.isArray(result.data) ? result.data : [];
+  const rawItems = Array.isArray(result.data) ? result.data : [];
+  const items = rawItems.filter((item: any) => item && item.user !== '_income_config_' && item.type !== 'income');
   return res.json({ success: true, items, source: 'restdb' });
 });
 
@@ -227,35 +229,136 @@ app.delete('/api/expenses/:id', async (req: Request, res: Response) => {
   }
 });
 
-// ================= INCOMES API ROUTES =================
-// 1. Get all monthly incomes
-app.get('/api/incomes', (req: Request, res: Response) => {
-  return res.json({ success: true, incomes: memoryIncomes });
+// ================= INCOMES API ROUTES (STORED IN RESTDB DATABASE) =================
+// 1. Get all monthly incomes from RestDB
+app.get('/api/incomes', async (req: Request, res: Response) => {
+  try {
+    const qStr = encodeURIComponent(JSON.stringify({ user: '_income_config_' }));
+    const response = await fetchFromRestDB(`chitieu?q=${qStr}`);
+    if (response.ok) {
+      const records = await response.json();
+      if (Array.isArray(records)) {
+        const dbIncomes: Record<string, { ngan: number; ton: number; _id?: string }> = {};
+        for (const rec of records) {
+          if (rec && rec.month) {
+            dbIncomes[rec.month] = {
+              ngan: Number(rec.ngan) || 0,
+              ton: Number(rec.ton) || 0,
+              _id: rec._id,
+            };
+          }
+        }
+        memoryIncomes = { ...memoryIncomes, ...dbIncomes };
+        saveMemoryIncomes(memoryIncomes);
+        return res.json({ success: true, incomes: dbIncomes, source: 'restdb' });
+      }
+    }
+  } catch (err) {
+    console.warn('Could not fetch incomes directly from RestDB:', err);
+  }
+
+  return res.json({ success: true, incomes: memoryIncomes, source: 'cache' });
 });
 
-// 2. Save/update monthly income for Ngân / Tòn
-app.post('/api/incomes', (req: Request, res: Response) => {
+// 2. Save/update monthly income for Ngân / Tòn in RestDB
+app.post('/api/incomes', async (req: Request, res: Response) => {
   try {
-    const { month, ngan, ton, incomes } = req.body;
-
-    if (incomes && typeof incomes === 'object') {
-      memoryIncomes = { ...memoryIncomes, ...incomes };
-      saveMemoryIncomes(memoryIncomes);
-      return res.json({ success: true, incomes: memoryIncomes });
-    }
+    const { month, ngan, ton } = req.body;
 
     if (!month) {
       return res.status(400).json({ error: 'Thiếu tháng áp dụng' });
     }
 
-    const currentMonthData = memoryIncomes[month] || {};
-    memoryIncomes[month] = {
-      ngan: ngan !== undefined ? Number(ngan) || 0 : currentMonthData.ngan || 0,
-      ton: ton !== undefined ? Number(ton) || 0 : currentMonthData.ton || 0,
-    };
+    const nganVal = Number(ngan) || 0;
+    const tonVal = Number(ton) || 0;
 
+    let savedToDb = false;
+
+    // Check if doc exists in RestDB for this month
+    try {
+      const qStr = encodeURIComponent(JSON.stringify({ user: '_income_config_', month }));
+      const checkRes = await fetchFromRestDB(`chitieu?q=${qStr}`);
+      if (checkRes.ok) {
+        const existingList = await checkRes.json();
+        if (Array.isArray(existingList) && existingList.length > 0) {
+          const existingDoc = existingList[0];
+          const putRes = await fetchFromRestDB(`chitieu/${existingDoc._id}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              user: '_income_config_',
+              month,
+              ngan: nganVal,
+              ton: tonVal,
+              type: 'income',
+            }),
+          });
+          if (putRes.ok) {
+            savedToDb = true;
+          }
+        }
+      }
+
+      if (!savedToDb) {
+        const postRes = await fetchFromRestDB('chitieu', {
+          method: 'POST',
+          body: JSON.stringify({
+            user: '_income_config_',
+            month,
+            ngan: nganVal,
+            ton: tonVal,
+            type: 'income',
+          }),
+        });
+        if (postRes.ok) {
+          savedToDb = true;
+        }
+      }
+    } catch (dbErr) {
+      console.error('Error saving income to RestDB:', dbErr);
+    }
+
+    // Update in-memory fallback
+    memoryIncomes[month] = {
+      ngan: nganVal,
+      ton: tonVal,
+    };
     saveMemoryIncomes(memoryIncomes);
-    return res.json({ success: true, incomes: memoryIncomes, monthData: memoryIncomes[month] });
+
+    // Re-query all incomes from DB to return complete synchronized map
+    try {
+      const qStr = encodeURIComponent(JSON.stringify({ user: '_income_config_' }));
+      const allRes = await fetchFromRestDB(`chitieu?q=${qStr}`);
+      if (allRes.ok) {
+        const records = await allRes.json();
+        if (Array.isArray(records)) {
+          const dbIncomes: Record<string, { ngan: number; ton: number; _id?: string }> = {};
+          for (const rec of records) {
+            if (rec && rec.month) {
+              dbIncomes[rec.month] = {
+                ngan: Number(rec.ngan) || 0,
+                ton: Number(rec.ton) || 0,
+                _id: rec._id,
+              };
+            }
+          }
+          return res.json({
+            success: true,
+            incomes: dbIncomes,
+            monthData: { ngan: nganVal, ton: tonVal },
+            source: 'restdb',
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return res.json({
+      success: true,
+      incomes: memoryIncomes,
+      monthData: { ngan: nganVal, ton: tonVal },
+      source: savedToDb ? 'restdb' : 'cache',
+    });
   } catch (err: any) {
     console.error('Error saving income:', err);
     return res.status(500).json({ error: err.message || 'Lỗi lưu thu nhập' });

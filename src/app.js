@@ -193,27 +193,14 @@ $(document).ready(function () {
     return String(dateStr);
   }
 
-  // --- LOCAL STORAGE DATA HELPERS ---
-  const LOCAL_STORAGE_INCOMES_KEY = 'so_chi_tieu_monthly_incomes';
+  // --- DATABASE-ONLY INCOME MANAGEMENT (SYNCS ALL DEVICES) ---
+  // Clean up any legacy client-only income localstorage so all devices stay strictly synced with database
+  try {
+    localStorage.removeItem('so_chi_tieu_monthly_incomes');
+  } catch (e) {}
 
-  function loadLocalIncomes() {
-    try {
-      const stored = localStorage.getItem(LOCAL_STORAGE_INCOMES_KEY);
-      return stored ? JSON.parse(stored) : {};
-    } catch {
-      return {};
-    }
-  }
-
-  function saveLocalIncomes(data) {
-    try {
-      localStorage.setItem(LOCAL_STORAGE_INCOMES_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.error('LocalStorage write error for incomes:', e);
-    }
-  }
-
-  let monthlyIncomes = loadLocalIncomes();
+  // Runtime memory cache populated strictly from database
+  let monthlyIncomes = {};
 
   function getIncomesForMonth(monthStr) {
     if (!monthStr) return { ngan: 0, ton: 0 };
@@ -253,18 +240,55 @@ $(document).ready(function () {
     return Math.round(num);
   }
 
-  function syncIncomesFromServer() {
-    if (isStaticHost) return;
+  function syncIncomesFromServer(callback) {
+    if (isStaticHost) {
+      // Direct query to RestDB for incomes on static host
+      const qStr = encodeURIComponent(JSON.stringify({ user: '_income_config_' }));
+      $.ajax({
+        url: `${RESTDB_URL}?q=${qStr}`,
+        method: 'GET',
+        headers: {
+          'x-apikey': RESTDB_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        timeout: 6000,
+        success: function (list) {
+          if (Array.isArray(list)) {
+            const dbMap = {};
+            list.forEach((item) => {
+              if (item && item.month) {
+                dbMap[item.month] = {
+                  ngan: Number(item.ngan) || 0,
+                  ton: Number(item.ton) || 0,
+                  _id: item._id,
+                };
+              }
+            });
+            monthlyIncomes = dbMap;
+            renderKPIs();
+          }
+          if (callback) callback();
+        },
+        error: function () {
+          if (callback) callback();
+        },
+      });
+      return;
+    }
+
     $.ajax({
       url: '/api/incomes',
       method: 'GET',
-      timeout: 4000,
+      timeout: 6000,
       success: function (res) {
         if (res && res.success && res.incomes) {
-          monthlyIncomes = { ...res.incomes, ...monthlyIncomes };
-          saveLocalIncomes(monthlyIncomes);
+          monthlyIncomes = res.incomes;
           renderKPIs();
         }
+        if (callback) callback();
+      },
+      error: function () {
+        if (callback) callback();
       },
     });
   }
@@ -302,6 +326,7 @@ $(document).ready(function () {
 
     rawList.forEach((doc, docIdx) => {
       if (!doc) return;
+      if (doc.user === '_income_config_' || doc.type === 'income') return;
 
       const docId = doc._id || `loc-${Date.now()}-${docIdx}`;
       const docDate = formatDateDDMMYYYY(doc.date || getTodayYYYYMMDD());
@@ -1174,28 +1199,114 @@ $(document).ready(function () {
     const nganVal = parseIncomeInput($('#input-income-ngan').val());
     const tonVal = parseIncomeInput($('#input-income-ton').val());
 
-    monthlyIncomes[activeMY] = {
-      ngan: nganVal,
-      ton: tonVal,
-    };
+    const $btn = $('#btn-save-income');
+    const originalBtnHtml = $btn.html();
+    $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> <span>Đang lưu DB...</span>');
 
-    saveLocalIncomes(monthlyIncomes);
-    renderKPIs();
-    closeIncomeModal();
+    function onSaveSuccess(serverIncomes) {
+      if (serverIncomes) {
+        monthlyIncomes = serverIncomes;
+      } else {
+        monthlyIncomes[activeMY] = { ngan: nganVal, ton: tonVal };
+      }
+      renderKPIs();
+      closeIncomeModal();
+      $btn.prop('disabled', false).html(originalBtnHtml);
+      showToast(`Đã lưu thu nhập tháng ${activeMY} lên database đồng bộ thiết bị!`, 'success');
+    }
 
-    showToast(`Đã lưu thu nhập tháng ${activeMY}!`, 'success');
+    function onSaveError(msg) {
+      monthlyIncomes[activeMY] = { ngan: nganVal, ton: tonVal };
+      renderKPIs();
+      closeIncomeModal();
+      $btn.prop('disabled', false).html(originalBtnHtml);
+      showToast(msg || `Đã ghi nhận thu nhập tháng ${activeMY}!`, 'info');
+    }
 
-    // Sync to Express backend if available
     if (!isStaticHost) {
       $.ajax({
         url: '/api/incomes',
         method: 'POST',
         contentType: 'application/json',
+        timeout: 8000,
         data: JSON.stringify({
           month: activeMY,
           ngan: nganVal,
           ton: tonVal,
         }),
+        success: function (res) {
+          onSaveSuccess(res && res.incomes ? res.incomes : null);
+        },
+        error: function () {
+          onSaveError('Không thể kết nối máy chủ, tạm thời áp dụng cục bộ');
+        },
+      });
+    } else {
+      // Direct RestDB save on static host (GitHub Pages, etc.)
+      const qStr = encodeURIComponent(JSON.stringify({ user: '_income_config_', month: activeMY }));
+      $.ajax({
+        url: `${RESTDB_URL}?q=${qStr}`,
+        method: 'GET',
+        headers: {
+          'x-apikey': RESTDB_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        timeout: 6000,
+        success: function (list) {
+          if (Array.isArray(list) && list.length > 0) {
+            const docId = list[0]._id;
+            $.ajax({
+              url: `${RESTDB_URL}/${docId}`,
+              method: 'PUT',
+              headers: {
+                'x-apikey': RESTDB_API_KEY,
+                'Content-Type': 'application/json',
+              },
+              data: JSON.stringify({
+                user: '_income_config_',
+                month: activeMY,
+                ngan: nganVal,
+                ton: tonVal,
+                type: 'income',
+              }),
+              success: function () {
+                syncIncomesFromServer(() => {
+                  onSaveSuccess();
+                });
+              },
+              error: function () {
+                onSaveError();
+              },
+            });
+          } else {
+            $.ajax({
+              url: RESTDB_URL,
+              method: 'POST',
+              headers: {
+                'x-apikey': RESTDB_API_KEY,
+                'Content-Type': 'application/json',
+              },
+              data: JSON.stringify({
+                user: '_income_config_',
+                month: activeMY,
+                ngan: nganVal,
+                ton: tonVal,
+                type: 'income',
+              }),
+              success: function () {
+                syncIncomesFromServer(() => {
+                  onSaveSuccess();
+                });
+              },
+              error: function () {
+                onSaveError();
+              },
+            });
+          }
+        },
+        error: function () {
+          onSaveError();
+        },
       });
     }
   }
