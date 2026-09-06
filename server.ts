@@ -27,6 +27,7 @@ const restdbHeaders = {
 import fs from 'fs';
 
 const BACKUP_FILE_PATH = path.join(process.cwd(), 'expenses_backup.json');
+const INCOMES_BACKUP_FILE = path.join(process.cwd(), 'incomes_backup.json');
 
 function loadMemoryExpenses(): any[] {
   try {
@@ -49,6 +50,28 @@ function saveMemoryExpenses(expenses: any[]) {
 }
 
 let memoryExpenses: any[] = loadMemoryExpenses();
+
+function loadMemoryIncomes(): Record<string, { ngan?: number; ton?: number }> {
+  try {
+    if (fs.existsSync(INCOMES_BACKUP_FILE)) {
+      const data = fs.readFileSync(INCOMES_BACKUP_FILE, 'utf-8');
+      return JSON.parse(data) || {};
+    }
+  } catch (e) {
+    console.error('Error reading incomes_backup.json:', e);
+  }
+  return {};
+}
+
+function saveMemoryIncomes(incomes: Record<string, { ngan?: number; ton?: number }>) {
+  try {
+    fs.writeFileSync(INCOMES_BACKUP_FILE, JSON.stringify(incomes, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Error writing incomes_backup.json:', e);
+  }
+}
+
+let memoryIncomes = loadMemoryIncomes();
 
 // Helper function to query restdb with collection fallback
 async function fetchFromRestDB(collection: string, options: RequestInit = {}) {
@@ -201,6 +224,41 @@ app.delete('/api/expenses/:id', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('Error deleting expense:', err);
     return res.status(500).json({ error: err.message || 'Lỗi xoá dữ liệu' });
+  }
+});
+
+// ================= INCOMES API ROUTES =================
+// 1. Get all monthly incomes
+app.get('/api/incomes', (req: Request, res: Response) => {
+  return res.json({ success: true, incomes: memoryIncomes });
+});
+
+// 2. Save/update monthly income for Ngân / Tòn
+app.post('/api/incomes', (req: Request, res: Response) => {
+  try {
+    const { month, ngan, ton, incomes } = req.body;
+
+    if (incomes && typeof incomes === 'object') {
+      memoryIncomes = { ...memoryIncomes, ...incomes };
+      saveMemoryIncomes(memoryIncomes);
+      return res.json({ success: true, incomes: memoryIncomes });
+    }
+
+    if (!month) {
+      return res.status(400).json({ error: 'Thiếu tháng áp dụng' });
+    }
+
+    const currentMonthData = memoryIncomes[month] || {};
+    memoryIncomes[month] = {
+      ngan: ngan !== undefined ? Number(ngan) || 0 : currentMonthData.ngan || 0,
+      ton: ton !== undefined ? Number(ton) || 0 : currentMonthData.ton || 0,
+    };
+
+    saveMemoryIncomes(memoryIncomes);
+    return res.json({ success: true, incomes: memoryIncomes, monthData: memoryIncomes[month] });
+  } catch (err: any) {
+    console.error('Error saving income:', err);
+    return res.status(500).json({ error: err.message || 'Lỗi lưu thu nhập' });
   }
 });
 

@@ -194,6 +194,81 @@ $(document).ready(function () {
   }
 
   // --- LOCAL STORAGE DATA HELPERS ---
+  const LOCAL_STORAGE_INCOMES_KEY = 'so_chi_tieu_monthly_incomes';
+
+  function loadLocalIncomes() {
+    try {
+      const stored = localStorage.getItem(LOCAL_STORAGE_INCOMES_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveLocalIncomes(data) {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_INCOMES_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.error('LocalStorage write error for incomes:', e);
+    }
+  }
+
+  let monthlyIncomes = loadLocalIncomes();
+
+  function getIncomesForMonth(monthStr) {
+    if (!monthStr) return { ngan: 0, ton: 0 };
+    const data = monthlyIncomes[monthStr];
+    if (!data) return { ngan: 0, ton: 0 };
+    return {
+      ngan: Number(data.ngan) || 0,
+      ton: Number(data.ton) || 0,
+    };
+  }
+
+  function parseIncomeInput(raw) {
+    if (!raw) return 0;
+    let str = String(raw).trim().toLowerCase().replace(/\s+/g, '');
+    if (!str) return 0;
+
+    if (str.includes('tr') || str.includes('m') || str.includes('triệu') || str.includes('trieu')) {
+      const num = parseFloat(str.replace(/[^0-9.]/g, '')) || 0;
+      return Math.round(num * 1000000);
+    }
+
+    if (str.includes('k')) {
+      const num = parseFloat(str.replace(/[^0-9.]/g, '')) || 0;
+      return Math.round(num * 1000);
+    }
+
+    const cleaned = str.replace(/[.,]/g, '');
+    const num = parseFloat(cleaned) || 0;
+    if (num <= 0) return 0;
+
+    if (num <= 200) {
+      return Math.round(num * 1000000);
+    }
+    if (num > 200 && num < 100000) {
+      return Math.round(num * 1000);
+    }
+    return Math.round(num);
+  }
+
+  function syncIncomesFromServer() {
+    if (isStaticHost) return;
+    $.ajax({
+      url: '/api/incomes',
+      method: 'GET',
+      timeout: 4000,
+      success: function (res) {
+        if (res && res.success && res.incomes) {
+          monthlyIncomes = { ...res.incomes, ...monthlyIncomes };
+          saveLocalIncomes(monthlyIncomes);
+          renderKPIs();
+        }
+      },
+    });
+  }
+
   function getLocalExpenses() {
     try {
       const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -285,6 +360,7 @@ $(document).ready(function () {
   // --- DATA FETCHING (SERVER API -> RESTDB -> LOCALSTORAGE FALLBACK) ---
   function loadExpenses() {
     $('#btn-reload-data i').addClass('fa-spin');
+    syncIncomesFromServer();
 
     if (isStaticHost) {
       fallbackToDirectRestDbOrLocal();
@@ -501,6 +577,62 @@ $(document).ready(function () {
     // Reload button
     $('#btn-reload-data').on('click', function () {
       loadExpenses();
+    });
+
+    // Income modal open buttons
+    $('#btn-open-income-modal').on('click', function () {
+      openIncomeModal('ngan');
+    });
+
+    $(document).on('click', '.btn-quick-edit-income', function (e) {
+      e.stopPropagation();
+      const user = $(this).data('user') || 'ngan';
+      openIncomeModal(user);
+    });
+
+    $('#income-modal-close, #btn-cancel-income').on('click', function () {
+      closeIncomeModal();
+    });
+
+    $('#income-modal').on('click', function (e) {
+      if (e.target === this) {
+        closeIncomeModal();
+      }
+    });
+
+    $('#input-income-ngan').on('input', function () {
+      updateIncomePreview('#input-income-ngan', '#preview-income-ngan');
+    });
+
+    $('#input-income-ton').on('input', function () {
+      updateIncomePreview('#input-income-ton', '#preview-income-ton');
+    });
+
+    $('.btn-income-quick').on('click', function () {
+      const target = $(this).data('target');
+      const val = parseFloat($(this).data('val')) || 0;
+      if (target === 'ngan') {
+        $('#input-income-ngan').val(formatCurrency(val).replace(' ₫', ''));
+        updateIncomePreview('#input-income-ngan', '#preview-income-ngan');
+      } else {
+        $('#input-income-ton').val(formatCurrency(val).replace(' ₫', ''));
+        updateIncomePreview('#input-income-ton', '#preview-income-ton');
+      }
+    });
+
+    $('.btn-income-clear').on('click', function () {
+      const target = $(this).data('target');
+      if (target === 'ngan') {
+        $('#input-income-ngan').val('');
+        $('#preview-income-ngan').text('Chưa nhập lương');
+      } else {
+        $('#input-income-ton').val('');
+        $('#preview-income-ton').text('Chưa nhập lương');
+      }
+    });
+
+    $('#btn-save-income').on('click', function () {
+      saveIncomeFromModal();
     });
 
     // Spender toggle
@@ -984,6 +1116,90 @@ $(document).ready(function () {
     $select.val(selectedMonthFilter);
   }
 
+  // --- INCOME MANAGEMENT HELPERS ---
+  function openIncomeModal(focusUser = 'ngan') {
+    const currentMY = getCurrentMonthYearStr();
+    const activeMY = (selectedMonthFilter === 'CURRENT' || selectedMonthFilter === 'ALL') ? currentMY : selectedMonthFilter;
+
+    $('#income-modal-target-month').text(`Tháng ${activeMY}`);
+    $('#income-modal-subtitle').text(`Nhập tổng thu nhập cho tháng ${activeMY}`);
+
+    const data = getIncomesForMonth(activeMY);
+
+    if (data.ngan > 0) {
+      $('#input-income-ngan').val(formatCurrency(data.ngan).replace(' ₫', ''));
+      $('#preview-income-ngan').text(formatCurrency(data.ngan));
+    } else {
+      $('#input-income-ngan').val('');
+      $('#preview-income-ngan').text('Chưa nhập lương');
+    }
+
+    if (data.ton > 0) {
+      $('#input-income-ton').val(formatCurrency(data.ton).replace(' ₫', ''));
+      $('#preview-income-ton').text(formatCurrency(data.ton));
+    } else {
+      $('#input-income-ton').val('');
+      $('#preview-income-ton').text('Chưa nhập lương');
+    }
+
+    $('#income-modal').removeClass('hidden').addClass('flex');
+
+    setTimeout(() => {
+      if (focusUser === 'ton') {
+        $('#input-income-ton').focus().select();
+      } else {
+        $('#input-income-ngan').focus().select();
+      }
+    }, 100);
+  }
+
+  function closeIncomeModal() {
+    $('#income-modal').addClass('hidden').removeClass('flex');
+  }
+
+  function updateIncomePreview(inputSelector, previewSelector) {
+    const raw = $(inputSelector).val();
+    const amt = parseIncomeInput(raw);
+    if (amt > 0) {
+      $(previewSelector).text(formatCurrency(amt));
+    } else {
+      $(previewSelector).text('Chưa nhập lương');
+    }
+  }
+
+  function saveIncomeFromModal() {
+    const currentMY = getCurrentMonthYearStr();
+    const activeMY = (selectedMonthFilter === 'CURRENT' || selectedMonthFilter === 'ALL') ? currentMY : selectedMonthFilter;
+
+    const nganVal = parseIncomeInput($('#input-income-ngan').val());
+    const tonVal = parseIncomeInput($('#input-income-ton').val());
+
+    monthlyIncomes[activeMY] = {
+      ngan: nganVal,
+      ton: tonVal,
+    };
+
+    saveLocalIncomes(monthlyIncomes);
+    renderKPIs();
+    closeIncomeModal();
+
+    showToast(`Đã lưu thu nhập tháng ${activeMY}!`, 'success');
+
+    // Sync to Express backend if available
+    if (!isStaticHost) {
+      $.ajax({
+        url: '/api/incomes',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+          month: activeMY,
+          ngan: nganVal,
+          ton: tonVal,
+        }),
+      });
+    }
+  }
+
   function renderKPIs() {
     const currentMY = getCurrentMonthYearStr();
     const activeMY = selectedMonthFilter === 'CURRENT' ? currentMY : selectedMonthFilter;
@@ -1039,6 +1255,43 @@ $(document).ready(function () {
 
     $('#kpi-ton-today').text(formatCurrency(tonTodayTotal));
     $('#kpi-ton-month').text(`Tháng này: ${formatCurrency(tonMonthTotal)} (${tonPercent}%)`);
+
+    // Incomes & Remaining calculation per person (strictly symmetric layout)
+    const targetMY = (selectedMonthFilter === 'CURRENT' || selectedMonthFilter === 'ALL') ? currentMY : selectedMonthFilter;
+    const targetIncomes = getIncomesForMonth(targetMY);
+
+    const hasNganIncome = targetIncomes.ngan > 0;
+    const hasTonIncome = targetIncomes.ton > 0;
+
+    // Ngăn Income & Remaining
+    if (hasNganIncome) {
+      const remainingNgan = targetIncomes.ngan - nganMonthTotal;
+      const pctNganRemaining = Math.round((remainingNgan / targetIncomes.ngan) * 100);
+      $('#kpi-ngan-income').html(`<span class="font-extrabold text-pink-700">${formatCurrency(targetIncomes.ngan)}</span>`);
+      if (remainingNgan >= 0) {
+        $('#kpi-ngan-remaining').html(`<span class="font-black text-pink-900">${formatCurrency(remainingNgan)} <span class="text-[9px] sm:text-[10px] font-bold text-pink-600">(${pctNganRemaining}%)</span></span>`);
+      } else {
+        $('#kpi-ngan-remaining').html(`<span class="font-black text-rose-600">${formatCurrency(remainingNgan)} <span class="text-[9px] sm:text-[10px] font-bold text-rose-500">(${pctNganRemaining}%)</span></span>`);
+      }
+    } else {
+      $('#kpi-ngan-income').html(`<span class="italic text-slate-400 font-semibold text-[10px] sm:text-xs">Chưa nhập lương</span>`);
+      $('#kpi-ngan-remaining').html(`<span class="italic text-slate-400 font-semibold text-[10px] sm:text-xs">Chưa nhập lương</span>`);
+    }
+
+    // Tòn Income & Remaining
+    if (hasTonIncome) {
+      const remainingTon = targetIncomes.ton - tonMonthTotal;
+      const pctTonRemaining = Math.round((remainingTon / targetIncomes.ton) * 100);
+      $('#kpi-ton-income').html(`<span class="font-extrabold text-amber-800">${formatCurrency(targetIncomes.ton)}</span>`);
+      if (remainingTon >= 0) {
+        $('#kpi-ton-remaining').html(`<span class="font-black text-amber-900">${formatCurrency(remainingTon)} <span class="text-[9px] sm:text-[10px] font-bold text-amber-700">(${pctTonRemaining}%)</span></span>`);
+      } else {
+        $('#kpi-ton-remaining').html(`<span class="font-black text-rose-600">${formatCurrency(remainingTon)} <span class="text-[9px] sm:text-[10px] font-bold text-rose-500">(${pctTonRemaining}%)</span></span>`);
+      }
+    } else {
+      $('#kpi-ton-income').html(`<span class="italic text-slate-400 font-semibold text-[10px] sm:text-xs">Chưa nhập lương</span>`);
+      $('#kpi-ton-remaining').html(`<span class="italic text-slate-400 font-semibold text-[10px] sm:text-xs">Chưa nhập lương</span>`);
+    }
 
     $('#kpi-month-count').text(`${monthCount} khoản`);
     $('#kpi-today-total').text(`Chi hôm nay: ${formatCurrency(todayTotal)}`);
